@@ -70,11 +70,8 @@
           <p id="ovTitle" class="ov-title"></p>
           <p id="ovText" class="ov-text"></p>
           <button id="ovBtn" class="btn">시작</button>
-          <!-- 게임이 끝났을 때만 보이는 버튼 -->
-          <div id="ovSub" class="btn-row hidden">
-            <button id="ovRank" class="btn btn-sub">순위 보기</button>
-            <button id="ovExit" class="btn btn-sub">나가기</button>
-          </div>
+          <!-- 보조 버튼 (순위 보기, 나가기, 친구와 대전 등) -->
+          <div id="ovSub" class="btn-row hidden"></div>
         </div>
       </div>
     </section>
@@ -86,6 +83,28 @@
         <ol id="rankList" class="rank-list"></ol>
         <p class="rank-note">지금은 이 기기의 기록만 보여요</p>
         <button id="rankClose" class="btn">닫기</button>
+      </div>
+    </div>
+
+    <!-- 친구와 대전: 방 만들기 / 들어가기 -->
+    <div id="pvpModal" class="overlay hidden">
+      <div class="pixel-box overlay-box">
+        <p class="ov-title">친구와 대전</p>
+        <div id="pvpMenu" class="pvp-menu">
+          <button id="pvpCreate" class="btn">방 만들기</button>
+          <p class="pvp-or">또는 방 번호 입력</p>
+          <div class="pvp-join">
+            <input id="pvpCode" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off" />
+            <button id="pvpJoin" class="btn">들어가기</button>
+          </div>
+        </div>
+        <div id="pvpWait" class="pvp-wait hidden">
+          <p class="pvp-label">방 번호</p>
+          <p id="pvpRoomCode" class="pvp-code">----</p>
+          <p class="ov-text">친구에게 방 번호를 알려 주세요.<br />상대를 기다리는 중…</p>
+        </div>
+        <p id="pvpMsg" class="pvp-msg"></p>
+        <button id="pvpCancel" class="btn btn-sub">취소</button>
       </div>
     </div>
 

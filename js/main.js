@@ -2,6 +2,7 @@ import { makeIcon, drawSprite, pixelEllipse, PAL } from './sprites.js';
 import { createMole } from './games/mole.js';
 import { createFighter } from './games/fighter.js';
 import { initPad, resetPad } from './pad.js';
+import { createRoom, joinRoom } from './net.js';
 
 // 게임 화면 기본 크기 (세로형 휴대폰 비율)
 const W = 180;
@@ -12,7 +13,7 @@ const H = 320;
 const GAMES = [
   { id: 'mole', name: '두더지 콩콩', ready: true, isNew: true, create: createMole,
     help: '30초 동안 8개 구멍에서\n나오는 두더지를 터치하세요.\n황금 두더지는 +30점!\n연속으로 맞히면 보너스!' },
-  { id: 'fight', name: '도트 격투', ready: true, isNew: true, create: createFighter, size: [160, 120], pad: true,
+  { id: 'fight', name: '도트 격투', ready: true, isNew: true, create: createFighter, size: [160, 120], pad: true, pvp: true,
     legend: 'A 주먹 · B 발차기 · C 점프 · D 막기',
     help: '1P vs CPU 대전!\n\n← → 이동 · ↓ 앉기\nAAA 주먹 연속기\nBBB 발 연속기\n← → 누른 채 A·B 돌진 공격' },
   { id: 'dodge', name: '별똥별 피하기', ready: false },
@@ -129,15 +130,27 @@ function fitCanvas() {
 }
 window.addEventListener('resize', fitCanvas);
 
-// sub: true 이면 '순위 보기', '나가기' 버튼도 함께 보여 줌
-function showOverlay(title, text, btn, onClick, sub = false) {
+// subs: 아래에 함께 보여 줄 보조 버튼 [{ label, onClick, keep }] (keep: 눌러도 안내창을 닫지 않음)
+// btn 이 비어 있으면 큰 버튼을 숨김
+function showOverlay(title, text, btn, onClick, subs = []) {
   $('ovTitle').textContent = title;
   $('ovText').textContent = text;
-  $('ovBtn').textContent = btn;
+  $('ovBtn').classList.toggle('hidden', !btn);
+  $('ovBtn').textContent = btn || '';
   $('ovBtn').onclick = () => { $('overlay').classList.add('hidden'); onClick(); };
-  $('ovSub').classList.toggle('hidden', !sub);
+  const row = $('ovSub');
+  row.innerHTML = '';
+  for (const sb of subs) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-sub';
+    b.textContent = sb.label;
+    b.onclick = () => { if (!sb.keep) $('overlay').classList.add('hidden'); sb.onClick(); };
+    row.appendChild(b);
+  }
+  row.classList.toggle('hidden', !subs.length);
   $('overlay').classList.remove('hidden');
 }
+const exitSub = { label: '나가기', onClick: () => $('backBtn').onclick() };
 
 // 순위 창
 function showRank(g, highlightAt) {
@@ -176,25 +189,27 @@ function openGame(g) {
   resetPad();
   fitCanvas();
 
+  current?.stop();
   current = g.create(canvas, {
     onScore: (s) => { $('playScore').textContent = s; },
-    // meta.title: 게임이 정한 제목 (예: 격투의 '승리!', '패배')
+    // meta.title: 게임이 정한 제목 (예: 격투의 '승리!', '패배'), meta.detail: 결과 창에 덧붙일 내용
     onGameOver: (s, meta = {}) => {
       const best = getBest(g.id);
       const isBest = s > best;
       if (isBest) setBest(g.id, s);
       const at = addRecord(g.id, s);
-      $('ovRank').onclick = () => showRank(g, at);
       showOverlay(meta.title || (isBest ? '최고 기록!' : '게임 끝'),
-        `점수 ${s}점\n최고 ${Math.max(s, best)}점`, '다시 하기', () => current.start(), true);
+        `점수 ${s}점\n최고 ${Math.max(s, best)}점` + (meta.detail ? `\n\n${meta.detail}` : ''),
+        '다시 하기', () => current.start(),
+        [{ label: '순위 보기', onClick: () => showRank(g, at), keep: true }, exitSub]);
     },
   });
-  showOverlay(g.name, g.help, '시작', () => current.start());
+  const subs = g.pvp ? [{ label: '친구와 대전', onClick: () => openLobby(g) }] : [];
+  showOverlay(g.name, g.help, g.pvp ? 'CPU와 대전' : '시작', () => current.start(), subs);
 }
 
-$('ovExit').onclick = () => $('backBtn').onclick();
-
 $('backBtn').onclick = () => {
+  leaveRoom();
   current?.stop();
   current = null;
   $('overlay').classList.add('hidden');
@@ -202,6 +217,126 @@ $('backBtn').onclick = () => {
   $('home').classList.add('active');
   renderList();
 };
+
+// ---------- 친구와 대전 (온라인) ----------
+let room = null;       // 지금 들어가 있는 방
+let lobbyBusy = false;
+
+function leaveRoom() {
+  if (!room) return;
+  room.leave();
+  room = null;
+}
+
+function lobbyView(waiting, msg = '') {
+  $('pvpMenu').classList.toggle('hidden', waiting);
+  $('pvpWait').classList.toggle('hidden', !waiting);
+  $('pvpMsg').textContent = msg;
+}
+
+function openLobby(g) {
+  lobbyView(false);
+  $('pvpWait').querySelector('.ov-text').textContent = '친구에게 방 번호를 알려 주세요.\n상대를 기다리는 중…';
+  $('pvpCode').value = '';
+  $('pvpModal').classList.remove('hidden');
+
+  const nick = () => store.get('nick', '플레이어');
+  const run = async (job, waitingText) => {
+    if (lobbyBusy) return;
+    lobbyBusy = true;
+    $('pvpMsg').textContent = waitingText;
+    try { await job(); } catch (e) {
+      leaveRoom();
+      const m = String(e?.code || e?.message || '');
+      lobbyView(false,
+        /permission/i.test(m) ? '접속 권한이 없어요. 관리자에게 알려 주세요.'
+        : m.startsWith('auth/') ? '로그인 설정을 확인해 주세요'
+        : /[가-힣]/.test(m) ? m : '연결하지 못했어요. 인터넷을 확인해 주세요.');
+    }
+    lobbyBusy = false;
+  };
+
+  $('pvpCreate').onclick = () => run(async () => {
+    room = await createRoom(nick());
+    $('pvpRoomCode').textContent = room.code;
+    lobbyView(true);
+    const r = room;
+    // 친구가 들어오면 바로 시작
+    r.onOpponent((op) => { if (room === r && op && !r.started) { r.started = true; startPvp(g, r, [nick(), op.nick]); } });
+  }, '연결하는 중…');
+
+  $('pvpJoin').onclick = () => {
+    const code = $('pvpCode').value.trim();
+    if (!/^\d{4}$/.test(code)) return lobbyView(false, '4자리 숫자를 입력해 주세요');
+    run(async () => {
+      room = await joinRoom(code, nick());
+      const r = room;
+      let hostNick = '';
+      r.onOpponent((op) => { if (op) hostNick = op.nick; });
+      // 방장이 경기를 시작하면 따라 시작
+      r.onRound((n) => {
+        if (room !== r || !n) return;
+        if (!r.started) { r.started = true; startPvp(g, r, [hostNick || '방장', nick()]); }
+        else if (n !== r.round) { r.round = n; $('overlay').classList.add('hidden'); current.start(); }
+      });
+      lobbyView(true, '');
+      $('pvpRoomCode').textContent = code;
+      $('pvpWait').querySelector('.ov-text').textContent = '방장이 시작하기를 기다리는 중…';
+    }, '들어가는 중…');
+  };
+
+  $('pvpCancel').onclick = () => {
+    leaveRoom();
+    $('pvpModal').classList.add('hidden');
+    openGame(g); // 처음 안내창으로 돌아감
+  };
+}
+
+// 온라인 대전 시작: names [왼쪽(방장), 오른쪽(들어온 사람)]
+function startPvp(g, r, names) {
+  $('pvpModal').classList.add('hidden');
+  $('overlay').classList.add('hidden');
+  $('playScore').textContent = '';
+  resetPad();
+  current?.stop();
+  r.round = 1;
+  current = g.create(canvas, {
+    net: r, names,
+    onScore: () => {},
+    onGameOver: (_, meta) => {
+      if (room !== r) return;
+      showOverlay(meta.title, `${names[0]} vs ${names[1]}`, '다시 하기', () => {
+        // 둘 다 '다시 하기'를 누르면 새 경기
+        r.ready(r.round + 1);
+        showOverlay('다시 하기', '상대를 기다리는 중…', '', () => {}, [exitSub]);
+      }, [exitSub]);
+    },
+  });
+
+  // 상대가 나가면 알려 줌
+  r.onOpponent((op) => {
+    if (room !== r || op) return;
+    const self = r;
+    current?.stop();
+    room = null;
+    self.leave();
+    showOverlay('대전 끝', '상대가 나갔어요', '확인', () => openGame(g));
+  });
+
+  if (r.role === 'host') {
+    r.setRound(1);
+    r.onReady((rd) => {
+      const next = r.round + 1;
+      if (room === r && rd.host === next && rd.guest === next) {
+        r.round = next;
+        r.setRound(next);
+        $('overlay').classList.add('hidden');
+        current.start();
+      }
+    });
+  }
+  current.start();
+}
 
 // 사파리에서 두 번 누르기·두 손가락으로 확대되는 것 막기
 ['gesturestart', 'gesturechange', 'dblclick'].forEach((ev) =>

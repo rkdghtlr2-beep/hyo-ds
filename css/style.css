@@ -250,7 +250,7 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 
 /* 보조 버튼 (순위 보기, 나가기) */
 .btn-row { display: flex; gap: 12px; }
-.btn-row.hidden { display: none; }
+.btn-row.hidden, .btn.hidden { display: none; }
 .btn-sub {
   flex: 1;
   font-size: 13px;
@@ -277,7 +277,19 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 .rank-list .empty { justify-content: center; color: var(--muted); }
 .rank-note { font-size: 10px; color: var(--muted); }
 
-#nickInput {
+/* 친구와 대전 */
+.pvp-menu, .pvp-wait { display: flex; flex-direction: column; gap: 12px; }
+.pvp-menu.hidden, .pvp-wait.hidden { display: none; }
+.pvp-or { font-size: 11px; color: var(--muted); }
+.pvp-join { display: flex; gap: 10px; }
+.pvp-join input { flex: 1; min-width: 0; letter-spacing: 4px; }
+.pvp-join .btn { flex: 1; }
+.pvp-label { font-size: 11px; color: var(--muted); }
+.pvp-code { font-size: 32px; color: var(--yellow); letter-spacing: 8px; }
+.pvp-msg { font-size: 11px; color: #ff8a8a; min-height: 14px; }
+.pvp-msg:empty { display: none; }
+
+#nickInput, #pvpCode {
   font-family: var(--font); font-size: 16px; /* 16px 미만이면 아이폰이 입력할 때 화면을 확대함 */
   padding: 10px; text-align: center;
   background: var(--bg); color: var(--text);

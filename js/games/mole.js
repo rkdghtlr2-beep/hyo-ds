@@ -23,6 +23,10 @@ const SPEED = 1.5;         // 7초 이후 빨라지는 배수
 const SQUASH = 0.14;       // 맞았을 때 찌그러지는 시간
 const GOLD = { N: '#ffcd75', Y: '#f4f4f4', P: '#ef7d57' };
 const POP_WORDS = ['뿅!', '콩!', '뿅!', '퐁!'];
+// 빨리 잡을수록 다음 두더지가 빨리 나옴 (최대 1.5배)
+const RUSH_MAX = 1.5;
+const RUSH_FAST = 0.35;    // 나온 뒤 이 시간 안에 맞히면 '빨리 잡음'
+const RUSH_SLOW = 0.6;     // 이 시간보다 늦게 맞히면 조금 느려짐
 
 // 구멍 8개: 3개 - 2개 - 3개 배치
 const HOLES = [
@@ -41,6 +45,8 @@ export function createMole(canvas, { onScore, onGameOver }) {
       moles: [], fx: [], hammers: [],
       shake: 0, shakeMag: 0, freeze: 0,
       fever: false, banner: null, over: false,
+      rush: 1, // 다음 두더지가 나오는 빠르기 배수 (1 ~ RUSH_MAX)
+      count: { mole: 0, gold: 0, fever: 0, miss: 0 }, // 결과 창에 보여 줄 잡은 수
     };
   }
 
@@ -56,8 +62,9 @@ export function createMole(canvas, { onScore, onGameOver }) {
 
   function startFever() {
     s.fever = true;
-    // 황금 두더지 0~2마리를 무작위 구멍에
-    const goldCount = (Math.random() * 3) | 0;
+    // 황금 두더지: 1마리 60%, 2마리 25%, 3마리 15% 확률로 무작위 구멍에
+    const r = Math.random();
+    const goldCount = r < 0.6 ? 1 : r < 0.85 ? 2 : 3;
     const order = HOLES.map((_, i) => i).sort(() => Math.random() - 0.5);
     const golds = new Set(order.slice(0, goldCount));
     s.moles = HOLES.map((_, i) => ({ hole: i, age: 0, pop: POP, stay: Infinity, gold: golds.has(i), fever: true, squash: 0 }));
@@ -101,6 +108,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
       s.fx.push({ type: 'dust', x, y: y + 4, t: 0.25 });
       sfx.miss();
       if (!s.fever) s.combo = 0; // 헛손질하면 연속 보너스 끊김
+      s.count.miss++;
       // 헛손질하면 10점 감점 (0점 아래로는 내려가지 않음)
       const loss = Math.min(10, s.score);
       if (loss > 0) {
@@ -119,7 +127,16 @@ export function createMole(canvas, { onScore, onGameOver }) {
     let gain;
     if (target.fever) {
       gain = target.gold ? 30 : 10;
+      s.count.fever++;
     } else {
+      // 나온 뒤 얼마나 빨리 맞혔는지에 따라 다음 출현 빠르기 조절
+      if (target.age < RUSH_FAST) {
+        s.rush = Math.min(RUSH_MAX, s.rush + 0.1);
+        s.spawn /= s.rush; // 기다리던 다음 두더지도 앞당김
+      } else if (target.age > RUSH_SLOW) {
+        s.rush = Math.max(1, s.rush - 0.1);
+      }
+      s.count[target.gold ? 'gold' : 'mole']++;
       target.hit = true;
       target.age = Math.max(target.age, target.pop);
       target.stay = target.age - target.pop + 0.28; // 잠깐 기절했다가 내려감
@@ -172,6 +189,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
           s.spawn = 0.8 + Math.random() * 0.2;
           for (let i = 0; i < count; i++) spawnMole(0.75, POP / SPEED);
         }
+        s.spawn /= s.rush; // 빨리 잡고 있으면 다음 두더지가 더 빨리 나옴
       }
     }
 
@@ -180,7 +198,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
       if (m.squash > 0) m.squash -= dt;
       if (m.age > m.stay + m.pop * 2) {
         m.done = true;
-        if (!m.hit) s.combo = 0; // 놓치면 연속 보너스 끊김
+        if (!m.hit) { s.combo = 0; s.rush = 1; } // 놓치면 연속 보너스 끊기고 원래 속도로
       }
     }
     s.moles = s.moles.filter((m) => !m.done);
@@ -372,7 +390,14 @@ export function createMole(canvas, { onScore, onGameOver }) {
     s.hammers = [];
     s.fx = [];
     s.banner = null;
-    onGameOver(s.score);
+    const c = s.count;
+    const detail = [
+      `두더지 ${c.mole}번`,
+      `황금 두더지 ${c.gold}번`,
+      `피버타임 ${c.fever}번`,
+      `헛손질 ${c.miss}번`,
+    ].join('\n');
+    onGameOver(s.score, { detail });
   }
 
   const bind = (on) => canvas[on ? 'addEventListener' : 'removeEventListener']('pointerdown', onDown);
