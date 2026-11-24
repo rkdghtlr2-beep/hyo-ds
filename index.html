@@ -42,7 +42,29 @@
         <span id="playTitle"></span>
         <span id="playScore" class="score">0</span>
       </header>
-      <div id="stage"><canvas id="gameCanvas"></canvas></div>
+      <!-- 게임기 본체: 위쪽 화면 + 아래쪽 조작부 (조작부는 필요한 게임에서만 보임) -->
+      <div id="console" class="console">
+        <div class="screen-bezel">
+          <div id="stage"><canvas id="gameCanvas"></canvas></div>
+        </div>
+        <div class="hinge"></div>
+        <div id="pad" class="pad">
+          <div id="dpad" class="dpad">
+            <span class="arm up" data-dir="up"></span>
+            <span class="arm right" data-dir="right"></span>
+            <span class="arm down" data-dir="down"></span>
+            <span class="arm left" data-dir="left"></span>
+            <span class="hub"></span>
+          </div>
+          <div class="abtns">
+            <button class="abtn a" data-key="A">A</button>
+            <button class="abtn b" data-key="B">B</button>
+            <button class="abtn c" data-key="C">C</button>
+            <button class="abtn d" data-key="D">D</button>
+          </div>
+        </div>
+        <p id="padLegend" class="pad-legend"></p>
+      </div>
       <div id="overlay" class="overlay hidden">
         <div class="pixel-box overlay-box">
           <p id="ovTitle" class="ov-title"></p>

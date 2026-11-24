@@ -132,6 +132,7 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 
 /* 게임 화면 */
 #play { background: #000; }
+#play.with-pad { background: var(--bg); }
 .play-top {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px;
@@ -143,6 +144,89 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 .score { color: var(--yellow); min-width: 60px; text-align: right; }
 #stage { flex: 1; display: flex; align-items: center; justify-content: center; }
 #stage, #stage canvas { touch-action: none; }
+
+/* 게임기 본체 — 조작부가 없는 게임은 화면만 꽉 차게 */
+.console { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.screen-bezel { flex: 1; display: flex; min-height: 0; }
+.hinge, .pad, .pad-legend { display: none; }
+
+/* 조작부가 있는 게임: 하얀 휴대용 게임기 모양 */
+#play.with-pad .console {
+  margin: 10px;
+  padding: 12px 12px 10px;
+  background: linear-gradient(180deg, #fbfbfd, #e2e3e9);
+  border-radius: 18px;
+  box-shadow: 0 0 0 3px var(--line), inset 0 -5px 0 #c3c6d1, inset 0 3px 0 #fff;
+}
+#play.with-pad .screen-bezel {
+  flex: none;
+  justify-content: center;
+  padding: 8px;
+  background: #2a2c34;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px #15161c, 0 2px 0 #fff;
+}
+#play.with-pad #stage { flex: none; }
+#play.with-pad .hinge {
+  display: block;
+  height: 8px;
+  margin: 12px -12px 0;
+  border-top: 2px solid #c3c6d1;
+  border-bottom: 2px solid #fff;
+  background: #eceef2;
+}
+#play.with-pad .pad {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px;
+  min-height: 160px;
+  touch-action: none;
+}
+#play.with-pad .pad-legend { display: block; font-size: 10px; color: #7a7e8b; text-align: center; }
+
+/* 십자 방향키 */
+.dpad { position: relative; width: 126px; height: 126px; flex-shrink: 0; touch-action: none; }
+.dpad .arm, .dpad .hub {
+  position: absolute;
+  background: linear-gradient(180deg, #f6f6f8, #d6d8df);
+  box-shadow: 0 0 0 2px #9da1ad, 0 4px 0 #9da1ad;
+}
+.dpad .arm.up    { left: 43px; top: 0;    width: 40px; height: 46px; border-radius: 6px 6px 0 0; }
+.dpad .arm.down  { left: 43px; bottom: 0; width: 40px; height: 46px; border-radius: 0 0 6px 6px; }
+.dpad .arm.left  { top: 43px;  left: 0;   width: 46px; height: 40px; border-radius: 6px 0 0 6px; }
+.dpad .arm.right { top: 43px;  right: 0;  width: 46px; height: 40px; border-radius: 0 6px 6px 0; }
+.dpad .hub { left: 43px; top: 43px; width: 40px; height: 40px; box-shadow: none; z-index: 1; }
+.dpad .hub::after {
+  content: ''; position: absolute; left: 13px; top: 13px; width: 14px; height: 14px;
+  border-radius: 50%; background: #e2e4ea; box-shadow: inset 0 2px 2px rgba(0,0,0,.15);
+}
+/* 방향 화살표 */
+.dpad .arm::after { content: ''; position: absolute; border: 6px solid transparent; }
+.dpad .arm.up::after    { left: 14px; top: 8px;     border-bottom-color: #a8acb8; }
+.dpad .arm.down::after  { left: 14px; bottom: 8px;  border-top-color: #a8acb8; }
+.dpad .arm.left::after  { top: 14px;  left: 8px;    border-right-color: #a8acb8; }
+.dpad .arm.right::after { top: 14px;  right: 8px;   border-left-color: #a8acb8; }
+.dpad .arm.on { background: #c9ccd5; box-shadow: 0 0 0 2px #9da1ad, 0 1px 0 #9da1ad; transform: translateY(2px); }
+
+/* A B C D 버튼 (A 위, B 오른쪽, C 아래, D 왼쪽) */
+.abtns { position: relative; width: 138px; height: 138px; flex-shrink: 0; }
+.abtn {
+  position: absolute;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  font-size: 17px;
+  color: #8a8e9a;
+  background: radial-gradient(circle at 40% 35%, #ffffff, #e0e2e8 70%);
+  box-shadow: 0 0 0 2px #9da1ad, 0 4px 0 #9da1ad;
+  touch-action: none;
+}
+.abtn.a { left: 45px; top: 0; }
+.abtn.b { right: 0; top: 45px; }
+.abtn.c { left: 45px; bottom: 4px; }
+.abtn.d { left: 0; top: 45px; }
+.abtn.on { transform: translateY(3px); box-shadow: 0 0 0 2px #9da1ad, 0 1px 0 #9da1ad; background: #d5d8df; }
 
 /* 안내창 */
 .overlay {

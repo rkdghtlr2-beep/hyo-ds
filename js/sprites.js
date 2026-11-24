@@ -164,6 +164,18 @@ export const ICONS = {
     ctx.restore();
     pixelEllipse(ctx, 8, 13, 8, 2, PAL.N, 'bottom');
   },
+  fight(ctx) {
+    px(ctx, PAL.D, 0, 0, 16, 16);
+    // 충격 표시
+    px(ctx, PAL.Y, 7, 0, 2, 16); px(ctx, PAL.Y, 0, 7, 16, 2);
+    px(ctx, PAL.O, 2, 2, 2, 2); px(ctx, PAL.O, 12, 2, 2, 2); px(ctx, PAL.O, 2, 12, 2, 2); px(ctx, PAL.O, 12, 12, 2, 2);
+    // 주먹
+    px(ctx, PAL.K, 3, 3, 10, 10);
+    px(ctx, '#e8b796', 4, 4, 8, 8);
+    px(ctx, PAL.K, 4, 7, 8, 1); px(ctx, PAL.K, 6, 4, 1, 3); px(ctx, PAL.K, 9, 4, 1, 3);
+    px(ctx, '#c48f6f', 4, 10, 8, 1);
+    px(ctx, PAL.R, 3, 12, 10, 2);
+  },
   stack(ctx) {
     px(ctx, PAL.D, 0, 0, 16, 16);
     const c = [PAL.R, PAL.O, PAL.Y, PAL.G, PAL.B];

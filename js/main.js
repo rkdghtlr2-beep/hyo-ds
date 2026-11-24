@@ -1,14 +1,20 @@
 import { makeIcon, drawSprite, pixelEllipse, PAL } from './sprites.js';
 import { createMole } from './games/mole.js';
+import { createFighter } from './games/fighter.js';
+import { initPad, resetPad } from './pad.js';
 
 // 게임 화면 기본 크기 (세로형 휴대폰 비율)
 const W = 180;
 const H = 320;
 
 // 게임 목록 (ready: false 는 준비 중)
+// size: 게임 화면 크기, pad: 게임기 조작부(방향키·버튼) 사용
 const GAMES = [
   { id: 'mole', name: '두더지 콩콩', ready: true, isNew: true, create: createMole,
     help: '30초 동안 8개 구멍에서\n나오는 두더지를 터치하세요.\n황금 두더지는 +30점!\n연속으로 맞히면 보너스!' },
+  { id: 'fight', name: '도트 격투', ready: true, isNew: true, create: createFighter, size: [160, 120], pad: true,
+    legend: 'A 주먹 · B 발차기 · C 점프 · D 막기',
+    help: '1P vs CPU 대전!\n\n← → 이동 · ↓ 앉기\nAAA 주먹 연속기\nBBB 발 연속기\n← → 누른 채 A·B 돌진 공격' },
   { id: 'dodge', name: '별똥별 피하기', ready: false },
   { id: 'jump', name: '폴짝 점프', ready: false },
   { id: 'rhythm', name: '박자 맞추기', ready: false },
@@ -107,11 +113,19 @@ canvas.width = W; canvas.height = H;
 
 // 휴대폰 화면 크기에 맞춰 도트가 깨지지 않게 확대
 function fitCanvas() {
-  const st = $('stage');
-  const fit = Math.min(st.clientWidth / W, st.clientHeight / H);
+  const cw = canvas.width, ch = canvas.height;
+  let fit;
+  if ($('play').classList.contains('with-pad')) {
+    // 게임기 화면: 가로폭에 맞추되 조작부 자리를 남겨 둠
+    const bezel = document.querySelector('.screen-bezel');
+    fit = Math.min((bezel.clientWidth - 16) / cw, (window.innerHeight * 0.42) / ch);
+  } else {
+    const st = $('stage');
+    fit = Math.min(st.clientWidth / cw, st.clientHeight / ch);
+  }
   const scale = fit >= 2 ? Math.floor(fit) : fit;
-  canvas.style.width = W * scale + 'px';
-  canvas.style.height = H * scale + 'px';
+  canvas.style.width = cw * scale + 'px';
+  canvas.style.height = ch * scale + 'px';
 }
 window.addEventListener('resize', fitCanvas);
 
@@ -155,17 +169,23 @@ function openGame(g) {
   $('play').classList.add('active');
   $('playTitle').textContent = g.name;
   $('playScore').textContent = '0';
+  const [cw, ch] = g.size || [W, H];
+  canvas.width = cw; canvas.height = ch;
+  $('play').classList.toggle('with-pad', !!g.pad);
+  $('padLegend').textContent = g.legend || '';
+  resetPad();
   fitCanvas();
 
   current = g.create(canvas, {
     onScore: (s) => { $('playScore').textContent = s; },
-    onGameOver: (s) => {
+    // meta.title: 게임이 정한 제목 (예: 격투의 '승리!', '패배')
+    onGameOver: (s, meta = {}) => {
       const best = getBest(g.id);
       const isBest = s > best;
       if (isBest) setBest(g.id, s);
       const at = addRecord(g.id, s);
       $('ovRank').onclick = () => showRank(g, at);
-      showOverlay(isBest ? '최고 기록!' : '게임 끝',
+      showOverlay(meta.title || (isBest ? '최고 기록!' : '게임 끝'),
         `점수 ${s}점\n최고 ${Math.max(s, best)}점`, '다시 하기', () => current.start(), true);
     },
   });
@@ -188,6 +208,7 @@ $('backBtn').onclick = () => {
   document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
 
 // 시작
+initPad();
 drawHero();
 renderList();
 refreshNick();
