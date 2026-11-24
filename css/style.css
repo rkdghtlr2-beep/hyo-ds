@@ -164,6 +164,35 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 }
 .btn:active { transform: translateY(2px); box-shadow: 0 0 0 3px var(--line), inset 0 -1px 0 #a14a32; }
 
+/* 보조 버튼 (순위 보기, 나가기) */
+.btn-row { display: flex; gap: 12px; }
+.btn-row.hidden { display: none; }
+.btn-sub {
+  flex: 1;
+  font-size: 13px;
+  background: var(--panel-dark);
+  box-shadow: 0 0 0 3px var(--line), inset 0 -4px 0 #151a3a;
+}
+.btn-sub:active { box-shadow: 0 0 0 3px var(--line), inset 0 -1px 0 #151a3a; }
+
+/* 순위 목록 */
+.rank-list { list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.rank-list li {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 7px 10px;
+  background: var(--panel-dark);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.rank-list .no { width: 22px; color: var(--muted); text-align: left; }
+.rank-list li:nth-child(1) .no { color: var(--yellow); }
+.rank-list li:nth-child(2) .no { color: #d9d9d9; }
+.rank-list li:nth-child(3) .no { color: var(--orange); }
+.rank-list .who { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-list .pt { color: var(--yellow); }
+.rank-list li.me { background: #3b5dc9; }
+.rank-list .empty { justify-content: center; color: var(--muted); }
+.rank-note { font-size: 10px; color: var(--muted); }
+
 #nickInput {
   font-family: var(--font); font-size: 16px; /* 16px 미만이면 아이폰이 입력할 때 화면을 확대함 */
   padding: 10px; text-align: center;

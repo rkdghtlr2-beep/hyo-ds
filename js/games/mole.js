@@ -348,7 +348,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
       ctx.fillStyle = PAL.O;
       ctx.fillText(s.combo + '연속!', W / 2, 50);
     }
-    if (s.fever) {
+    if (s.fever && !s.over) {
       ctx.font = '10px Galmuri9, monospace';
       ctx.textAlign = 'center';
       ctx.fillStyle = Math.floor(s.time * 6) % 2 ? PAL.R : PAL.K;
@@ -370,6 +370,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
     s.over = true;
     s.moles = [];
     s.hammers = [];
+    s.fx = [];
     s.banner = null;
     onGameOver(s.score);
   }

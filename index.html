@@ -48,9 +48,24 @@
           <p id="ovTitle" class="ov-title"></p>
           <p id="ovText" class="ov-text"></p>
           <button id="ovBtn" class="btn">시작</button>
+          <!-- 게임이 끝났을 때만 보이는 버튼 -->
+          <div id="ovSub" class="btn-row hidden">
+            <button id="ovRank" class="btn btn-sub">순위 보기</button>
+            <button id="ovExit" class="btn btn-sub">나가기</button>
+          </div>
         </div>
       </div>
     </section>
+
+    <!-- 순위 -->
+    <div id="rankModal" class="overlay hidden">
+      <div class="pixel-box overlay-box">
+        <p id="rankTitle" class="ov-title">순위</p>
+        <ol id="rankList" class="rank-list"></ol>
+        <p class="rank-note">지금은 이 기기의 기록만 보여요</p>
+        <button id="rankClose" class="btn">닫기</button>
+      </div>
+    </div>
 
     <!-- 닉네임 입력 -->
     <div id="nickModal" class="overlay hidden">

@@ -26,6 +26,15 @@ const store = {
 const getBest = (id) => store.get('best', {})[id] || 0;
 const setBest = (id, v) => { const b = store.get('best', {}); b[id] = v; store.set('best', b); };
 
+// 순위 기록 (게임별 상위 10개)
+function addRecord(id, score) {
+  const all = store.get('records', {});
+  const rec = { nick: store.get('nick', '플레이어'), score, at: Date.now() };
+  all[id] = [...(all[id] || []), rec].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, 10);
+  store.set('records', all);
+  return rec.at;
+}
+
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
@@ -106,13 +115,40 @@ function fitCanvas() {
 }
 window.addEventListener('resize', fitCanvas);
 
-function showOverlay(title, text, btn, onClick) {
+// sub: true 이면 '순위 보기', '나가기' 버튼도 함께 보여 줌
+function showOverlay(title, text, btn, onClick, sub = false) {
   $('ovTitle').textContent = title;
   $('ovText').textContent = text;
   $('ovBtn').textContent = btn;
   $('ovBtn').onclick = () => { $('overlay').classList.add('hidden'); onClick(); };
+  $('ovSub').classList.toggle('hidden', !sub);
   $('overlay').classList.remove('hidden');
 }
+
+// 순위 창
+function showRank(g, highlightAt) {
+  $('rankTitle').textContent = `${g.name} 순위`;
+  const ol = $('rankList');
+  ol.innerHTML = '';
+  const list = store.get('records', {})[g.id] || [];
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = '아직 기록이 없어요';
+    ol.appendChild(li);
+  }
+  list.forEach((r, i) => {
+    const li = document.createElement('li');
+    if (r.at === highlightAt) li.className = 'me';
+    const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
+    const who = document.createElement('span'); who.className = 'who'; who.textContent = r.nick;
+    const pt = document.createElement('span'); pt.className = 'pt'; pt.textContent = r.score + '점';
+    li.append(no, who, pt);
+    ol.appendChild(li);
+  });
+  $('rankModal').classList.remove('hidden');
+}
+$('rankClose').onclick = () => $('rankModal').classList.add('hidden');
 
 function openGame(g) {
   $('home').classList.remove('active');
@@ -127,12 +163,16 @@ function openGame(g) {
       const best = getBest(g.id);
       const isBest = s > best;
       if (isBest) setBest(g.id, s);
+      const at = addRecord(g.id, s);
+      $('ovRank').onclick = () => showRank(g, at);
       showOverlay(isBest ? '최고 기록!' : '게임 끝',
-        `점수 ${s}점\n최고 ${Math.max(s, best)}점`, '다시 하기', () => current.start());
+        `점수 ${s}점\n최고 ${Math.max(s, best)}점`, '다시 하기', () => current.start(), true);
     },
   });
   showOverlay(g.name, g.help, '시작', () => current.start());
 }
+
+$('ovExit').onclick = () => $('backBtn').onclick();
 
 $('backBtn').onclick = () => {
   current?.stop();
