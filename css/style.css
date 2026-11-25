@@ -289,7 +289,15 @@ button { font-family: inherit; color: inherit; background: none; border: 0; curs
 .pvp-msg { font-size: 11px; color: #ff8a8a; min-height: 14px; }
 .pvp-msg:empty { display: none; }
 
-#nickInput, #pvpCode {
+.link-btn { font-size: 11px; color: var(--muted); text-decoration: underline; background: none; padding: 2px 0; }
+.nick-hint { font-size: 11px; color: var(--muted); line-height: 1.6; }
+#nickPw:not(:placeholder-shown) { letter-spacing: 6px; }
+
+/* 운영자(GM) 이름 */
+.rank-list li .who.gm { color: var(--yellow); }
+.rank-list li .who.gm::before { content: '🎮 '; }
+
+#nickInput, #nickPw, #pvpCode {
   font-family: var(--font); font-size: 16px; /* 16px 미만이면 아이폰이 입력할 때 화면을 확대함 */
   padding: 10px; text-align: center;
   background: var(--bg); color: var(--text);

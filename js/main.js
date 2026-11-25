@@ -3,7 +3,7 @@ import { createMole } from './games/mole.js';
 import { createFighter } from './games/fighter.js';
 import { createBungeo } from './games/bungeo.js';
 import { initPad, resetPad } from './pad.js';
-import { createRoom, joinRoom } from './net.js';
+import { createRoom, joinRoom, submitScore, loadRanking, login, GM } from './net.js';
 
 // 게임 화면 기본 크기 (세로형 휴대폰 비율)
 const W = 180;
@@ -36,8 +36,10 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const getBest = (id) => store.get('best', {})[id] || 0;
-const setBest = (id, v) => { const b = store.get('best', {}); b[id] = v; store.set('best', b); };
+// 최고 기록은 계정마다 따로 (한 기기에서 여러 계정으로 로그인해도 섞이지 않게)
+const bestKey = () => (store.get('acct') ? `best:${store.get('acct')}` : 'best');
+const getBest = (id) => store.get(bestKey(), {})[id] || 0;
+const setBest = (id, v) => { const b = store.get(bestKey(), {}); b[id] = v; store.set(bestKey(), b); };
 
 // 순위 기록 (게임별 상위 10개)
 function addRecord(id, score) {
@@ -93,20 +95,55 @@ function renderList() {
 }
 
 // 닉네임
-function refreshNick() { $('nickBtn').textContent = '👤 ' + store.get('nick', '플레이어'); }
+function refreshNick() {
+  const nick = store.get('nick', '플레이어');
+  $('nickBtn').textContent = (nick === GM ? '🎮 ' : '👤 ') + nick;
+}
+// 로그인 창: 이름 + 비밀번호 4자리. 처음 쓰는 이름이면 계정이 새로 만들어짐
+// acct: 로그인한 계정 이름 (없으면 아직 로그인 전)
 function askNick() {
   $('nickInput').value = store.get('nick', '');
+  $('nickPw').value = '';
+  $('nickMsg').textContent = '';
+  $('nickClose').classList.toggle('hidden', !store.get('acct')); // 로그인 전에는 닫을 수 없음
   $('nickModal').classList.remove('hidden');
-  setTimeout(() => $('nickInput').focus(), 50);
+  setTimeout(() => $(store.get('nick') ? 'nickPw' : 'nickInput').focus(), 50);
 }
 $('nickBtn').onclick = askNick;
-$('nickSave').onclick = () => {
-  const v = $('nickInput').value.trim();
-  if (!v) return toast('이름을 입력해 주세요');
-  store.set('nick', v);
-  refreshNick();
-  $('nickModal').classList.add('hidden');
+$('nickClose').onclick = () => $('nickModal').classList.add('hidden');
+$('nickFind').onclick = () => { $('nickMsg').textContent = '개발자에게 문의하세요'; };
+
+let nickBusy = false;
+$('nickSave').onclick = async () => {
+  if (nickBusy) return;
+  nickBusy = true;
+  $('nickMsg').textContent = '확인하는 중…';
+  try {
+    const { nick, created } = await login($('nickInput').value, $('nickPw').value.trim());
+    // 로그인 전에 이 기기에서 세운 최고 기록은 처음 로그인한 계정으로 옮김
+    const legacy = store.get('best', null);
+    store.set('nick', nick);
+    store.set('acct', nick);
+    if (legacy) {
+      const b = store.get(bestKey(), {});
+      for (const k in legacy) b[k] = Math.max(b[k] || 0, legacy[k]);
+      store.set(bestKey(), b);
+      try { localStorage.removeItem('best'); } catch {}
+    }
+    refreshNick();
+    $('nickModal').classList.add('hidden');
+    toast(created ? '새 계정을 만들었어요' : `${nick}님, 다시 오셨네요`);
+    // 이 기기의 최고 기록을 함께 보는 순위에 올림
+    GAMES.filter((g) => g.ready).forEach((g) => sendBest(g).catch(() => {}));
+    renderList();
+  } catch (e) {
+    const m = e?.message || '';
+    $('nickMsg').textContent = /[가-힣]/.test(m) ? m : '인터넷 연결을 확인해 주세요';
+  } finally {
+    nickBusy = false;
+  }
 };
+$('nickPw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('nickSave').onclick(); });
 
 // 아래 메뉴
 document.querySelectorAll('.tab').forEach((b) => {
@@ -161,27 +198,51 @@ function showOverlay(title, text, btn, onClick, subs = []) {
 const exitSub = { label: '나가기', onClick: () => $('backBtn').onclick() };
 
 // 순위 창
-function showRank(g, highlightAt) {
-  $('rankTitle').textContent = `${g.name} 순위`;
+// 순위 목록 그리기. isMe(r): 내 기록 줄인지
+function drawRankList(g, list, isMe, emptyText = '아직 기록이 없어요') {
   const ol = $('rankList');
   ol.innerHTML = '';
-  const list = store.get('records', {})[g.id] || [];
   if (!list.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = '아직 기록이 없어요';
+    li.textContent = emptyText;
     ol.appendChild(li);
   }
   list.forEach((r, i) => {
     const li = document.createElement('li');
-    if (r.at === highlightAt) li.className = 'me';
+    if (isMe(r)) li.className = 'me';
     const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
-    const who = document.createElement('span'); who.className = 'who'; who.textContent = r.nick;
+    const who = document.createElement('span'); who.className = r.nick === GM ? 'who gm' : 'who'; who.textContent = r.nick;
     const pt = document.createElement('span'); pt.className = 'pt'; pt.textContent = fmt(g, r.score);
     li.append(no, who, pt);
     ol.appendChild(li);
   });
+}
+
+// 기록 올리기 (실패해도 게임에는 영향 없음, 다음에 순위를 열 때 다시 올림)
+const sendBest = (g) => {
+  const best = getBest(g.id), acct = store.get('acct');
+  if (!acct) return Promise.reject(new Error('로그인 전'));
+  return best > 0 ? submitScore(g.id, acct, best) : Promise.resolve();
+};
+
+// 순위 창: 모두가 함께 보는 순위 (한 사람당 최고 기록 1개). 인터넷이 안 되면 이 기기 기록을 보여 줌
+let rankToken = 0;
+async function showRank(g, highlightAt) {
+  const token = ++rankToken;
+  $('rankTitle').textContent = `${g.name} 순위`;
+  $('rankNote').textContent = '모두가 함께 보는 순위예요 · 한 사람당 최고 기록 1개';
+  drawRankList(g, [], () => false, '불러오는 중…');
   $('rankModal').classList.remove('hidden');
+  try {
+    await sendBest(g); // 이 기기의 최고 기록이 아직 안 올라갔으면 올림
+    const list = await loadRanking(g.id, store.get('acct'));
+    if (token === rankToken) drawRankList(g, list, (r) => r.me);
+  } catch {
+    if (token !== rankToken) return;
+    $('rankNote').textContent = store.get('acct') ? '인터넷 연결이 안 돼 이 기기 기록만 보여요' : '로그인하면 함께 보는 순위에 올라가요';
+    drawRankList(g, store.get('records', {})[g.id] || [], (r) => r.at === highlightAt);
+  }
 }
 $('rankClose').onclick = () => $('rankModal').classList.add('hidden');
 
@@ -206,6 +267,7 @@ function openGame(g) {
       const isBest = s > best;
       if (isBest) setBest(g.id, s);
       const at = addRecord(g.id, s);
+      if (isBest) sendBest(g).catch(() => {}); // 최고 기록이면 함께 보는 순위에 올림
       showOverlay(meta.title || (isBest ? '최고 기록!' : '게임 끝'),
         `${g.unit === '원' ? '번 돈' : '점수'} ${fmt(g, s)}\n최고 ${fmt(g, Math.max(s, best))}` + (meta.detail ? `\n\n${meta.detail}` : ''),
         '다시 하기', () => current.start(),
@@ -243,6 +305,7 @@ function lobbyView(waiting, msg = '') {
 }
 
 function openLobby(g) {
+  if (!store.get('acct')) { openGame(g); return askNick(); } // 친구와 대전은 로그인해야 할 수 있음
   lobbyView(false);
   $('pvpWait').querySelector('.ov-text').textContent = '친구에게 방 번호를 알려 주세요.\n상대를 기다리는 중…';
   $('pvpCode').value = '';
@@ -355,4 +418,4 @@ initPad();
 drawHero();
 renderList();
 refreshNick();
-if (!store.get('nick')) askNick();
+if (!store.get('acct')) askNick(); // 로그인 전이면 로그인 창부터

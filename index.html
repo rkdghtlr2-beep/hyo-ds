@@ -81,7 +81,7 @@
       <div class="pixel-box overlay-box">
         <p id="rankTitle" class="ov-title">순위</p>
         <ol id="rankList" class="rank-list"></ol>
-        <p class="rank-note">지금은 이 기기의 기록만 보여요</p>
+        <p id="rankNote" class="rank-note"></p>
         <button id="rankClose" class="btn">닫기</button>
       </div>
     </div>
@@ -111,9 +111,14 @@
     <!-- 닉네임 입력 -->
     <div id="nickModal" class="overlay hidden">
       <div class="pixel-box overlay-box">
-        <p class="ov-title">이름을 정해 주세요</p>
-        <input id="nickInput" maxlength="8" placeholder="최대 8글자" />
+        <p class="ov-title">로그인</p>
+        <p class="nick-hint">처음 쓰는 이름이면 새로 만들어져요.<br />다른 휴대폰에서도 같은 이름과<br />비밀번호로 기록을 이어 갈 수 있어요.</p>
+        <input id="nickInput" maxlength="8" placeholder="이름 (최대 8글자)" autocomplete="off" />
+        <input id="nickPw" type="password" inputmode="numeric" maxlength="4" placeholder="비밀번호 숫자 4자리" autocomplete="off" />
+        <p id="nickMsg" class="pvp-msg"></p>
         <button id="nickSave" class="btn">확인</button>
+        <button id="nickClose" class="btn btn-sub hidden">닫기</button>
+        <button id="nickFind" class="link-btn">비밀번호 찾기</button>
       </div>
     </div>
 
