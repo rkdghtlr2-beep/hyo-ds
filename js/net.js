@@ -46,18 +46,17 @@ function makeRoom(code, role) {
     onOpponent(cb) { listen(other, cb); },
     onRound(cb) { listen('round', cb); },
     onReady(cb) { listen('ready', (v) => cb(v || {})); },
-    onState(cb) { listen('st', cb); },
-    onInput(cb) { listen('in', cb); },
-    sendState(v) { set(r('st'), v); },
-    sendInput(v) { set(r('in'), v); },
-    setRound(n) { update(ref(db, base), { round: n, ready: null, st: null }); },
+    // 각자 자기 캐릭터 상태를 자기 칸(p0 방장, p1 들어온 사람)에 쓰고, 상대 칸을 읽음
+    onFoe(cb) { listen(role === 'host' ? 'p1' : 'p0', cb); },
+    send(v) { set(r(role === 'host' ? 'p0' : 'p1'), v); },
+    setRound(n) { update(ref(db, base), { round: n, ready: null }); },
     ready(n) { set(r(`ready/${role}`), n); },
     async leave() {
       subs.forEach((rf) => off(rf));
       subs.length = 0;
       try {
         if (role === 'host') await remove(ref(db, base));
-        else await update(ref(db, base), { guest: null, in: null, [`ready/guest`]: null });
+        else await update(ref(db, base), { guest: null, p1: null, [`ready/guest`]: null });
       } catch {}
     },
   };

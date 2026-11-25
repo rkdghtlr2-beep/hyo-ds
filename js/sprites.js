@@ -176,6 +176,23 @@ export const ICONS = {
     px(ctx, '#c48f6f', 4, 10, 8, 1);
     px(ctx, PAL.R, 3, 12, 10, 2);
   },
+  // 붕어빵 타이쿤: 노릇한 붕어빵 한 마리
+  bungeo(ctx) {
+    px(ctx, PAL.R, 0, 0, 16, 16);
+    for (let x = 0; x < 16; x += 4) px(ctx, PAL.W, x, 0, 2, 3); // 차양 줄무늬
+    const fish = [
+      '....KKKKKK...KK.',
+      '..KKYYYYYYKK.KYK',
+      '.KYKYOYYOYYYKKYK',
+      'KYYYYOYYOYYYYYK.',
+      'KYYYYOYYOYYYYYK.',
+      '.KYYYYYYYYYYKKYK',
+      '..KKYYYYYYKK.KYK',
+      '....KKKKKK...KK.',
+    ];
+    fish.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], x, 5 + y)));
+    px(ctx, PAL.N, 0, 14, 16, 2);
+  },
   stack(ctx) {
     px(ctx, PAL.D, 0, 0, 16, 16);
     const c = [PAL.R, PAL.O, PAL.Y, PAL.G, PAL.B];

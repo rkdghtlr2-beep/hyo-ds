@@ -1,6 +1,7 @@
 import { makeIcon, drawSprite, pixelEllipse, PAL } from './sprites.js';
 import { createMole } from './games/mole.js';
 import { createFighter } from './games/fighter.js';
+import { createBungeo } from './games/bungeo.js';
 import { initPad, resetPad } from './pad.js';
 import { createRoom, joinRoom } from './net.js';
 
@@ -15,7 +16,10 @@ const GAMES = [
     help: '30초 동안 8개 구멍에서\n나오는 두더지를 터치하세요.\n황금 두더지는 +30점!\n연속으로 맞히면 보너스!' },
   { id: 'fight', name: '도트 격투', ready: true, isNew: true, create: createFighter, size: [160, 120], pad: true, pvp: true,
     legend: 'A 주먹 · B 발차기 · C 점프 · D 막기',
-    help: '1P vs CPU 대전!\n\n← → 이동 · ↓ 앉기\nAAA 주먹 연속기\nBBB 발 연속기\n← → 누른 채 A·B 돌진 공격' },
+    help: '1P vs CPU 대전!\n\n← → 이동 · ↓ 앉기\nAAA 주먹 연속기\nBBB 발 연속기\n← → 누른 채 A·B 돌진 공격\n↑ 누른 채 A·B 띄우기' },
+  // 점수 = 번 돈 합계 (원)
+  { id: 'bungeo', name: '붕어빵 타이쿤', ready: true, isNew: true, create: createBungeo, size: [1080, 1920], unit: '원',
+    help: '빈 틀을 눌러 반죽, 한 번 더 눌러 속!\n노릇해지면 뒤집고, 또 노릇하면 꺼내기\n너무 오래 두면 타요\n\n손님을 눌러 주문대로 팔고\n하루(60초) 매출 목표를 채우세요\n날이 갈수록 손님이 까다로워져요\n장사가 끝나면 임대료! 못 내면 파산' },
   { id: 'dodge', name: '별똥별 피하기', ready: false },
   { id: 'jump', name: '폴짝 점프', ready: false },
   { id: 'rhythm', name: '박자 맞추기', ready: false },
@@ -24,6 +28,8 @@ const GAMES = [
 ];
 
 const $ = (id) => document.getElementById(id);
+// 점수 표시: 게임마다 단위가 다름 (기본 '점', 붕어빵은 '원')
+const fmt = (g, n) => (g.unit === '원' ? n.toLocaleString('ko-KR') + '원' : n + '점');
 
 // 기기 안 저장 (나중에 Firebase로 옮길 예정)
 const store = {
@@ -79,7 +85,7 @@ function renderList() {
     li.appendChild(makeIcon(g.id));
     li.insertAdjacentHTML('beforeend',
       `<span class="name">${g.name}</span>` +
-      `<span class="best">${g.ready ? `최고 ${getBest(g.id)}점` : '준비 중'}</span>` +
+      `<span class="best">${g.ready ? `최고 ${fmt(g, getBest(g.id))}` : '준비 중'}</span>` +
       (g.isNew ? '<span class="badge new">NEW</span>' : ''));
     li.onclick = () => (g.ready ? openGame(g) : toast('곧 추가될 게임이에요'));
     ul.appendChild(li);
@@ -115,6 +121,8 @@ canvas.width = W; canvas.height = H;
 // 휴대폰 화면 크기에 맞춰 도트가 깨지지 않게 확대
 function fitCanvas() {
   const cw = canvas.width, ch = canvas.height;
+  // 큰 캔버스(예: 붕어빵 1080×1920)가 화면 칸을 먼저 늘리지 않게, 잴 때는 잠시 0으로
+  canvas.style.width = canvas.style.height = '0px';
   let fit;
   if ($('play').classList.contains('with-pad')) {
     // 게임기 화면: 가로폭에 맞추되 조작부 자리를 남겨 둠
@@ -169,7 +177,7 @@ function showRank(g, highlightAt) {
     if (r.at === highlightAt) li.className = 'me';
     const no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
     const who = document.createElement('span'); who.className = 'who'; who.textContent = r.nick;
-    const pt = document.createElement('span'); pt.className = 'pt'; pt.textContent = r.score + '점';
+    const pt = document.createElement('span'); pt.className = 'pt'; pt.textContent = fmt(g, r.score);
     li.append(no, who, pt);
     ol.appendChild(li);
   });
@@ -191,7 +199,7 @@ function openGame(g) {
 
   current?.stop();
   current = g.create(canvas, {
-    onScore: (s) => { $('playScore').textContent = s; },
+    onScore: (s) => { $('playScore').textContent = g.unit ? fmt(g, s) : s; },
     // meta.title: 게임이 정한 제목 (예: 격투의 '승리!', '패배'), meta.detail: 결과 창에 덧붙일 내용
     onGameOver: (s, meta = {}) => {
       const best = getBest(g.id);
@@ -199,7 +207,7 @@ function openGame(g) {
       if (isBest) setBest(g.id, s);
       const at = addRecord(g.id, s);
       showOverlay(meta.title || (isBest ? '최고 기록!' : '게임 끝'),
-        `점수 ${s}점\n최고 ${Math.max(s, best)}점` + (meta.detail ? `\n\n${meta.detail}` : ''),
+        `${g.unit === '원' ? '번 돈' : '점수'} ${fmt(g, s)}\n최고 ${fmt(g, Math.max(s, best))}` + (meta.detail ? `\n\n${meta.detail}` : ''),
         '다시 하기', () => current.start(),
         [{ label: '순위 보기', onClick: () => showRank(g, at), keep: true }, exitSub]);
     },

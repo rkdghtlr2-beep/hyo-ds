@@ -52,6 +52,8 @@ const POSES = {
   hit: { hip: [-1, 17], neck: [-4, 28], head: [-6, 32], fe: [-1, 24], fh: [2, 20], be: [-6, 24], bh: [-9, 27], fk: [3, 9], ff: [4, 0], bk: [-4, 9], bf: [-6, 0] },
   launch: { hip: [0, 15], neck: [-6, 22], head: [-9, 25], fe: [-2, 20], fh: [2, 24], be: [-8, 20], bh: [-11, 24], fk: [4, 10], ff: [7, 4], bk: [2, 8], bf: [4, 2] },
   down: { hip: [-4, 3], neck: [-15, 3], head: [-20, 4], fe: [-10, 6], fh: [-8, 9], be: [-13, 2], bh: [-10, 1], fk: [2, 5], ff: [8, 1], bk: [2, 3], bf: [9, 0] },
+  uppercut: { hip: [0, 18], neck: [2, 30], head: [3, 35], fe: [7, 37], fh: [8, 46], be: [-2, 24], bh: [2, 27], fk: [5, 11], ff: [6, 0], bk: [-4, 8], bf: [-6, 0] },
+  upkick: { hip: [-1, 18], neck: [-4, 29], head: [-5, 34], fe: [1, 24], fh: [3, 27], be: [-6, 23], bh: [-4, 26], fk: [6, 27], ff: [9, 41], bk: [-1, 9], bf: [-1, 0] },
   win: { hip: [0, 17], neck: [0, 29], head: [0, 34], fe: [3, 36], fh: [4, 43], be: [-3, 23], bh: [-1, 19], ...STAND_LEGS },
 };
 
@@ -65,39 +67,99 @@ const MOVES = {
   B3: { pose: 'kick3', start: 0.12, active: 0.09, recover: 0.28, dmg: 12, kb: 90, stun: 0.5, hit: { x: [6, 20], y: [16, 26] }, launch: true, snd: 'kick' },
   DA: { pose: 'dashpunch', start: 0.05, active: 0.16, recover: 0.2, dmg: 8, kb: 80, stun: 0.35, hit: { x: [6, 18], y: [20, 30] }, dash: 120, snd: 'punch' },
   DB: { pose: 'slide', start: 0.05, active: 0.2, recover: 0.22, dmg: 9, kb: 60, stun: 0.35, hit: { x: [4, 18], y: [0, 8] }, dash: 130, launch: true, low: true, snd: 'kick' },
+  // ↑ + A·B: 위로 띄우는 공격. 맞히면 바로 A·B로 이어서 공중 연속기(AAA, BBB) 가능 (cancel)
+  UA: { pose: 'uppercut', start: 0.07, active: 0.08, recover: 0.16, dmg: 8, kb: 20, stun: 0.3, hit: { x: [4, 15], y: [20, 48] }, launch: true, lift: 230, cancel: true, snd: 'punch' },
+  UB: { pose: 'upkick', start: 0.08, active: 0.09, recover: 0.17, dmg: 9, kb: 20, stun: 0.3, hit: { x: [4, 16], y: [14, 44] }, launch: true, lift: 230, cancel: true, snd: 'kick' },
   JA: { pose: 'airkick', start: 0.04, active: 0.25, recover: 0.1, dmg: 8, kb: 60, stun: 0.3, hit: { x: [4, 16], y: [2, 14] }, air: true, snd: 'kick' },
 };
 
-const SEND_GAP = 0.05; // 방장이 화면 상태를 보내는 간격 (초당 20번)
+const AIR_MAX = 4;     // 공중 연속기는 띄우기 포함 4연속까지, 4번째에 멀리 날아감
+const SEND_GAP = 0.05; // 내 캐릭터 상태를 보내는 간격 (초당 20번)
 
 // net: 온라인 대전 방 (없으면 CPU 대전), names: [왼쪽, 오른쪽] 이름표
+// 온라인 대전: 각자 자기 캐릭터를 자기 휴대폰에서 바로 움직이고, 상태만 서로 보냄
+//  - 때린 사람이 '맞혔다'를 보내면, 맞은 사람 휴대폰이 막았는지/맞았는지 정하고 체력을 깎음
+//  - 남은 시간은 방장 기준, 시간이 끝나면 방장이 결과를 정함
 export function createFighter(canvas, { onScore, onGameOver, net = null, names = ['1P', 'CPU'] }) {
   const ctx = canvas.getContext('2d');
   const bg = makeBackground();
-  const mode = net ? net.role : 'cpu'; // 'cpu' | 'host' | 'guest'
-  const meIdx = mode === 'guest' ? 1 : 0; // 내 캐릭터: 0 왼쪽, 1 오른쪽
+  const online = !!net;
+  const isHost = online && net.role === 'host';
+  const meIdx = online && !isHost ? 1 : 0; // 내 캐릭터: 0 왼쪽, 1 오른쪽
   let s, raf, last;
+  let me, foe; // 내 캐릭터, 상대 캐릭터
 
   // ---------- 온라인 대전: 주고받는 내용 ----------
-  let events = [];      // 방장 → 상대: 이번에 난 소리와 효과
-  let sendT = 0, seq = 0;
-  let remote = { held: {}, cnt: {} }, seen = {}; // 방장이 받은 상대 입력
-  let snap = null, snapSeq = -1;                  // 상대가 받은 최신 화면 상태
-  let myCnt = { A: 0, B: 0, C: 0 }, lastSent = '';
+  let outEv = [], evId = 0, seenEv = 0;  // 보낼 사건(맞힘, KO, 시간 끝) / 이미 처리한 사건 번호
+  let sendT = 0, seq = 0, lastRecv = -1;
+  const sentAt = new Map();
+  let ping = 0; // 왕복 시간(ms)
 
-  if (mode === 'host') net.onInput((v) => { if (v) remote = { held: v.h || {}, cnt: v.c || {} }; });
-  if (mode === 'guest') net.onState((v) => { if (v && v.n !== snapSeq) { snap = v; } });
+  if (online) net.onFoe((v) => { if (v && s) receive(v); });
 
-  function play(name, vib) {
-    sfx[name]();
-    if (vib) buzz(vib);
-    if (mode === 'host') events.push({ s: name, v: vib || 0 });
+  function sendNow() {
+    const now = performance.now();
+    outEv = outEv.filter((e) => now - e.at < 1500); // 사건은 1.5초 동안 계속 실어 보내 빠짐없이 전달
+    const n = seq++;
+    sentAt.set(n, now);
+    if (sentAt.size > 60) sentAt.delete(sentAt.keys().next().value);
+    net.send({
+      n, an: lastRecv, f: packF(me),
+      ev: outEv.map(({ at, ...e }) => e),
+      tm: isHost ? Math.round(s.time * 10) / 10 : null,
+    });
+    sendT = SEND_GAP;
   }
-  const vibe = (ms) => { buzz(ms); if (mode === 'host') events.push({ v: ms }); };
-  function pushFx(e) {
-    s.fx.push(e);
-    if (mode === 'host') events.push({ f: e });
+  function sendEv(e) {
+    outEv.push({ ...e, id: ++evId, at: performance.now() });
+    sendNow(); // 사건은 바로 보냄
   }
+
+  const packF = (f) => [Math.round(f.x * 10) / 10, Math.round(f.y * 10) / 10, f.face, f.state, f.move || 0,
+    f.crouch ? 1 : 0, f.flash > 0 ? 1 : 0, f.hp, f.combo];
+
+  // 상대가 보낸 상태 받기
+  function receive(v) {
+    if (v.n <= lastRecv && v.n > lastRecv - 1000) return; // 이미 받은 것
+    lastRecv = v.n;
+    if (sentAt.has(v.an)) ping = performance.now() - sentAt.get(v.an);
+
+    const [x, y, face, state, move, crouch, flash, hp, combo] = v.f;
+    const f = foe;
+    if (state === 'attack' && move && (f.state !== 'attack' || f.move !== move)) play('swing');
+    if (f.y > 0 && y <= 0 && f.state !== 'ko') pushFx({ type: 'dust', x, y: GROUND, t: 0.2 });
+    Object.assign(f, { tx: x, ty: y, face, state, move: move || null, crouch: !!crouch, hp });
+    if (flash) f.flash = 0.06;
+    if (combo >= 2 && combo !== f.combo) s.comboText = { left: f === s.p, n: combo, t: 0.9 };
+    f.combo = combo;
+    if (Math.abs(f.x - x) > 40) { f.x = x; f.y = y; } // 너무 멀면 바로 맞춤
+
+    // 들어온 사람은 남은 시간을 방장에 맞춤
+    if (!isHost && v.tm != null && s.phase === 'fight') s.time = v.tm;
+
+    for (const e of v.ev || []) {
+      if (e.id <= seenEv) continue;
+      seenEv = e.id;
+      if (s.over) continue;
+      if (e.k === 'hit') takeHit(e);
+      else if (e.k === 'ko') endRound('ko', me);
+      else if (e.k === 'end') endRound('time', null, e.r);
+    }
+  }
+
+  // 상대 캐릭터는 받은 위치를 부드럽게 따라감
+  function followFoe(dt) {
+    const f = foe;
+    f.t += dt;
+    if (f.flash > 0) f.flash -= dt;
+    if (f.tx == null) return;
+    f.x += (f.tx - f.x) * Math.min(1, dt * 20);
+    f.y += (f.ty - f.y) * Math.min(1, dt * 30);
+  }
+
+  function play(name) { sfx[name](); }
+  const vibe = (ms) => buzz(ms);
+  function pushFx(e) { s.fx.push(e); }
 
   function newFighter(x, face, look) {
     return {
@@ -115,81 +177,9 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
       score: 0, fx: [], shake: 0, freeze: 0, over: false, result: null, comboText: null,
       ai: { t: 0.6, clock: 0, held: {}, plan: [] },
     };
-    events = []; sendT = 0;
-    seen = { ...remote.cnt }; // 경기 전에 눌린 버튼은 무시
-    snap = null;
-  }
-
-  // 방장: 상대가 보낸 입력을 내 게임 입력 모양으로 바꿈 (버튼은 누른 횟수가 늘었으면 새로 누른 것)
-  function remoteInput() {
-    const h = remote.held, pressed = new Set();
-    for (const k of ['A', 'B', 'C']) {
-      if ((remote.cnt[k] || 0) > (seen[k] || 0)) pressed.add(k);
-      seen[k] = remote.cnt[k] || 0;
-    }
-    return { left: !!h.l, right: !!h.r, down: !!h.d, guard: !!h.g, pressed };
-  }
-
-  // 들어온 사람: 내 입력이 바뀌었을 때만 보냄
-  function sendMyInput() {
-    const h = pad.held;
-    for (const k of consumePressed()) if (k in myCnt) myCnt[k]++;
-    const v = { h: { l: h.left ? 1 : 0, r: h.right ? 1 : 0, d: h.down ? 1 : 0, g: h.D ? 1 : 0 }, c: myCnt };
-    const str = JSON.stringify(v);
-    if (str !== lastSent) { lastSent = str; net.sendInput(v); }
-  }
-
-  // 방장: 화면 상태를 줄여서 보냄
-  const packF = (f) => [Math.round(f.x * 10) / 10, Math.round(f.y * 10) / 10, f.face, f.state, f.move || 0,
-    f.crouch ? 1 : 0, f.flash > 0 ? 1 : 0, f.hp, Math.round(f.shownHp)];
-  function sendState() {
-    net.sendState({
-      n: seq++, f: [packF(s.p), packF(s.c)],
-      tm: Math.round(s.time * 10) / 10, ph: s.phase, pt: Math.round(s.phaseT * 100) / 100,
-      r: s.result || 0, bn: s.banner || 0, ct: s.comboText || 0, sk: s.shake > 0 ? 1 : 0,
-      ov: s.over ? 1 : 0, ev: events,
-    });
-    events = [];
-  }
-
-  // 들어온 사람: 받은 화면 상태를 그대로 따라 그림 (위치는 부드럽게 따라감)
-  function guestUpdate(dt) {
-    sendMyInput();
-    for (const fx of s.fx) fx.t -= dt;
-    s.fx = s.fx.filter((fx) => fx.t > 0);
-    [s.p, s.c].forEach((f) => { f.t += dt; if (f.flash > 0) f.flash -= dt; });
-    if (s.shake > 0) s.shake -= dt;
-    if (!snap || snap.n === snapSeq) return smooth(dt);
-    const v = snap;
-    snapSeq = v.n;
-    [s.p, s.c].forEach((f, i) => {
-      const [x, y, face, state, move, crouch, flash, hp, shownHp] = v.f[i];
-      Object.assign(f, { tx: x, ty: y, face, state, move: move || null, crouch: !!crouch, hp, shownHp });
-      if (flash) f.flash = 0.06;
-      if (Math.abs(f.x - x) > 30) { f.x = x; f.y = y; } // 너무 멀면 바로 맞춤
-    });
-    Object.assign(s, { time: v.tm, phase: v.ph, phaseT: v.pt, result: v.r || null, banner: v.bn || null, comboText: v.ct || null });
-    if (v.sk) s.shake = Math.max(s.shake, 0.1);
-    for (const e of v.ev || []) {
-      if (e.s) sfx[e.s]();
-      if (e.v) buzz(e.v);
-      if (e.f) s.fx.push({ ...e.f });
-    }
-    smooth(dt);
-    if (v.ov && !s.over) {
-      s.over = true;
-      // 방장 기준 결과를 내 기준으로 바꿈
-      const mine = { win: 'lose', lose: 'win', draw: 'draw' }[s.result];
-      onGameOver(0, { title: { win: '승리!', lose: '패배', draw: '무승부' }[mine], pvp: true });
-    }
-  }
-  function smooth(dt) {
-    const k = Math.min(1, dt * 18);
-    [s.p, s.c].forEach((f) => {
-      if (f.tx == null) return;
-      f.x += (f.tx - f.x) * k;
-      f.y += (f.ty - f.y) * Math.min(1, dt * 25);
-    });
+    me = meIdx ? s.c : s.p;
+    foe = meIdx ? s.p : s.c;
+    outEv = []; sendT = 0;
   }
 
   // ---------- 입력 ----------
@@ -197,7 +187,7 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
 
   function playerInput() {
     const h = pad.held;
-    return { left: h.left, right: h.right, down: h.down, guard: h.D, pressed: consumePressed() };
+    return { left: h.left, right: h.right, up: h.up, down: h.down, guard: h.D, pressed: consumePressed() };
   }
 
   // 컴퓨터: 거리와 상황을 보고 행동을 고름
@@ -243,7 +233,9 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     else if (r < 0.62) { ai.plan = presses('B', [0]); ai.t = 0.4; }
     else if (r < 0.72) { ai.held = { down: true }; ai.t = 0.35; }
     else if (r < 0.82) { ai.held = { [away]: true }; ai.t = 0.3; }
-    else if (r < 0.9) { ai.held = { [to]: true }; ai.plan = [{ key: 'C', at: 0 }, { key: 'B', at: 0.2 }]; ai.t = 0.7; }
+    else if (r < 0.86) { ai.held = { [to]: true }; ai.plan = [{ key: 'C', at: 0 }, { key: 'B', at: 0.2 }]; ai.t = 0.7; }
+    // 띄우기 → 공중 연속기
+    else if (r < 0.92) { const k = Math.random() < 0.5 ? 'A' : 'B'; ai.held = { up: true }; ai.plan = presses(k, [0, 0.2, 0.38, 0.58]); ai.t = 1.1; }
     else { ai.held = { guard: true }; ai.t = 0.4; }
   }
 
@@ -278,8 +270,9 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     }
     if (P.has('A') || P.has('B')) {
       const k = P.has('A') ? 'A' : 'B';
-      // ←/→를 누른 채 공격하면 달려가며 공격
-      if (dir && !inp.down) startMove(f, k === 'A' ? 'DA' : 'DB', dir);
+      // ↑를 누른 채 공격하면 위로 띄우는 공격, ←/→를 누른 채 공격하면 달려가며 공격
+      if (inp.up && !inp.down) startMove(f, 'U' + k);
+      else if (dir && !inp.down) startMove(f, k === 'A' ? 'DA' : 'DB', dir);
       else startMove(f, k + '1');
       return;
     }
@@ -294,6 +287,11 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     f.mt += dt;
     // 연속기: 같은 버튼을 다시 누르면 다음 동작 예약
     if (mv.next && inp.pressed.has(mv.next[0]) && f.mt > mv.start * 0.5) f.buffer = mv.next;
+    // 띄우기 공격이 맞았으면 A·B로 바로 연속기 시작
+    if (mv.cancel && f.hitDone) {
+      if (inp.pressed.has('A')) f.buffer = 'A1';
+      else if (inp.pressed.has('B')) f.buffer = 'B1';
+    }
     // 달려가며 공격
     if (mv.dash) f.vx = f.mt < mv.start + mv.active ? f.dashDir * mv.dash : f.vx * 0.8;
     else if (f.y <= 0) f.vx = 0;
@@ -319,18 +317,48 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     const crouching = o.state === 'crouch' || (o.state === 'guard' && o.crouch);
     const oh = o.state === 'down' || o.state === 'ko' ? 0 : crouching ? CROUCH_H : STAND_H;
     if (!oh || o.inv > 0) return;
-    const bx1 = o.x - BODY, bx2 = o.x + BODY, by1 = o.y, by2 = o.y + oh;
+    // 공중에 뜬 상대는 몸이 눕혀져 있어 아래쪽도 맞게 넓힘 (공중 연속기가 잘 이어지게)
+    const by1 = o.state === 'launch' ? Math.max(0, o.y - 16) : o.y;
+    const bx1 = o.x - BODY, bx2 = o.x + BODY, by2 = o.y + oh;
     if (ax2 < bx1 || ax1 > bx2 || ay2 < by1 || ay1 > by2) return;
 
     f.hitDone = true;
+    // 상대가 벽에 붙어 있으면 때린 쪽이 대신 뒤로 밀려남 (구석에서 계속 붙어 때리지 못하게)
+    if (o.x <= 14 || o.x >= W - 14) f.push = -f.face * (40 + mv.kb * 1.2);
     const hx = (Math.max(ax1, bx1) + Math.min(ax2, bx2)) / 2;
     const hy = GROUND - (Math.max(ay1, by1) + Math.min(ay2, by2)) / 2;
 
-    // 막기: 땅에서 상대를 보고 D를 누르고 있으면 막힘
-    // 하단 공격(low)은 ↓ + D 로 앉아서 막아야만 막힘
-    const facing = Math.sign(f.x - o.x) === o.face;
-    if (o.state === 'guard' && o.y <= 0 && facing && (!mv.low || o.crouch)) {
-      o.vx = f.face * mv.kb * 0.7;
+    if (online) {
+      // 온라인: 맞혔다고 상대에게 알리고, 내 화면에는 바로 타격 효과를 보여 줌 (체력은 상대 휴대폰이 깎음)
+      sendEv({ k: 'hit', m: f.move, x: Math.round(f.x * 10) / 10, y: Math.round(f.y), face: f.face });
+      if (blocks(o, f.x, mv)) {
+        pushFx({ type: 'spark', x: hx, y: hy, t: 0.18, block: true });
+        s.freeze = 0.03;
+        play('block');
+      } else {
+        o.flash = 0.08;
+        pushFx({ type: 'spark', x: hx, y: hy, t: 0.2, big: !!mv.launch });
+        s.freeze = mv.launch ? 0.08 : 0.05;
+        if (mv.launch) s.shake = 0.2;
+        play(mv.snd);
+        vibe(mv.launch ? 30 : 15);
+      }
+      return;
+    }
+    applyHit(f, o, mv, hx, hy);
+  }
+
+  // 막기: 땅에서 상대를 보고 D를 누르고 있으면 막힘
+  // 하단 공격(low)은 ↓ + D 로 앉아서 막아야만 막힘
+  function blocks(o, fromX, mv) {
+    const facing = Math.sign(fromX - o.x) === o.face;
+    return o.state === 'guard' && o.y <= 0 && facing && (!mv.low || o.crouch);
+  }
+
+  // 맞은 쪽 처리. f: 때린 캐릭터 (온라인에서는 상대 캐릭터)
+  function applyHit(f, o, mv, hx, hy, fromX = f.x, dir = f.face) {
+    if (blocks(o, fromX, mv)) {
+      o.vx = dir * mv.kb * 0.7;
       pushFx({ type: 'spark', x: hx, y: hy, t: 0.18, block: true });
       s.freeze = 0.03;
       play('block');
@@ -339,16 +367,27 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
 
     const chained = o.state === 'hit' || o.state === 'launch';
     o.combo = chained ? o.combo + 1 : 1;
+    o.bounced = false; // 새로 맞으면 다시 벽에 튕길 수 있음
     o.hp = Math.max(0, o.hp - mv.dmg);
     o.flash = 0.08;
     o.move = null;
     if (o.hp <= 0) {
-      o.state = 'ko'; o.vy = 170; o.y = Math.max(o.y, 0.01); o.vx = f.face * 90;
+      o.state = 'ko'; o.vy = 170; o.y = Math.max(o.y, 0.01); o.vx = dir * 90;
+      if (online) sendEv({ k: 'ko' });
       endRound('ko', f);
+    } else if (o.y > 0 && o.combo >= AIR_MAX) {
+      // 공중에서 4연속째(띄우기 + 3번)를 맞으면 무조건 멀리 날아감
+      o.state = 'launch'; o.vy = 180; o.vx = dir * Math.max(mv.kb, 90);
+    } else if (o.y > 0 && !(mv.launch && !mv.lift)) {
+      // 공중 연속기: 살짝만 띄우고 덜 밀어서 다음 공격이 닿게 (띄우기 공격을 또 맞아도 높이 뜨지 않음)
+      o.state = 'launch'; o.vy = Math.min(110, 60 + o.y * 0.5); o.vx = dir * mv.kb * 0.12; // 높이 떠 있을수록 덜 띄움
     } else if (mv.launch || o.y > 0) {
-      o.state = 'launch'; o.vy = mv.launch ? 180 : 120; o.y = Math.max(o.y, 0.01); o.vx = f.face * mv.kb;
+      o.state = 'launch'; o.vy = mv.lift || (mv.launch ? 180 : 120); o.y = Math.max(o.y, 0.01); o.vx = dir * mv.kb;
     } else {
-      o.state = 'hit'; o.stun = mv.stun; o.vx = f.face * mv.kb;
+      o.state = 'hit'; o.stun = mv.stun; o.vx = dir * mv.kb;
+      // 벽에 붙은 채 센 공격(밀어내는 힘 70 이상)을 맞으면 벽에 부딪혀 튕겨 나옴
+      const atWall = (dir > 0 && o.x >= W - 14) || (dir < 0 && o.x <= 14);
+      if (atWall && mv.kb >= 70) wallBounce(o, -dir, true);
     }
 
     pushFx({ type: 'spark', x: hx, y: hy, t: 0.2, big: !!mv.launch });
@@ -356,11 +395,26 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     if (mv.launch) { s.shake = 0.2; }
     play(mv.snd);
     vibe(mv.launch ? 30 : 15);
-    if (f === s.p && !net) { s.score += mv.dmg * 10; onScore(s.score); }
+    if (f === s.p && !online) { s.score += mv.dmg * 10; onScore(s.score); }
     if (o.combo >= 2) s.comboText = { left: f === s.p, n: o.combo, t: 0.9 };
   }
 
+  // 온라인: 상대가 '맞혔다'고 보내면 내 휴대폰에서 지금 내 상태로 다시 확인하고 처리
+  function takeHit(e) {
+    const mv = MOVES[e.m];
+    const o = me;
+    if (!mv || o.state === 'down' || o.state === 'ko' || o.inv > 0) return;
+    // 그사이 앉았다면 높은 공격은 머리 위로 지나감
+    const crouching = o.state === 'crouch' || (o.state === 'guard' && o.crouch);
+    if (crouching && e.y + mv.hit.y[0] > o.y + CROUCH_H) return;
+    const mid = (mv.hit.y[0] + mv.hit.y[1]) / 2;
+    const hx = o.x - e.face * 3;
+    const hy = GROUND - Math.min(o.y + (crouching ? CROUCH_H : STAND_H) - 2, e.y + mid);
+    applyHit(foe, o, mv, hx, hy, e.x, e.face);
+  }
+
   function land(f) {
+    f.bounced = false;
     if (f.state === 'launch') { f.state = 'down'; f.stun = 0.55; f.vx = 0; play('thud'); s.shake = Math.max(s.shake, 0.1); }
     else if (f.state === 'ko') { f.vx = 0; play('thud'); }
     else if (f.state === 'jump' || (f.state === 'attack' && MOVES[f.move]?.air)) { f.state = 'idle'; f.move = null; f.vx = 0; }
@@ -375,7 +429,30 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     } else if (f.state !== 'walk' && !(f.state === 'attack' && MOVES[f.move]?.dash)) {
       f.vx *= Math.exp(-12 * dt);
     }
-    f.x = Math.max(8, Math.min(W - 8, f.x + f.vx * dt));
+    // push: 구석에 몰린 상대를 때렸을 때 때린 쪽이 뒤로 밀려나는 힘
+    if (f.push) { f.push *= Math.exp(-8 * dt); if (Math.abs(f.push) < 2) f.push = 0; }
+    const nx = f.x + (f.vx + (f.push || 0)) * dt;
+    f.x = Math.max(8, Math.min(W - 8, nx));
+    if (nx < 8 || nx > W - 8) wallBounce(f, nx < 8 ? 1 : -1);
+  }
+
+  // 벽 튕기기: 세게 밀려 벽에 부딪히면 튕겨 나옴 (구석에만 갇히지 않게)
+  // out: 벽에서 나오는 방향 (왼쪽 벽 1, 오른쪽 벽 -1)
+  // force: 벽에 붙은 채 센 공격을 맞았을 때 바로 튕김
+  function wallBounce(f, out, force = false) {
+    if (f.bounced) return;
+    const sp = Math.abs(f.vx);
+    const air = f.state === 'launch' || f.state === 'ko';
+    if (!force && !(air && sp > 30)) return;
+    f.bounced = true;
+    if (f.state === 'hit') f.state = 'launch';
+    f.vx = out * Math.max(50, sp * 0.7);
+    f.vy = Math.max(f.vy, f.state === 'ko' ? 90 : 120);
+    f.y = Math.max(f.y, 0.01);
+    pushFx({ type: 'spark', x: out > 0 ? 3 : W - 3, y: GROUND - f.y - 18, t: 0.2, big: true });
+    pushFx({ type: 'dust', x: out > 0 ? 6 : W - 6, y: GROUND - f.y - 6, t: 0.2 });
+    play('thud');
+    s.shake = Math.max(s.shake, 0.15);
   }
 
   function stepFighter(f, o, inp, dt) {
@@ -392,7 +469,7 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     physics(f, dt);
   }
 
-  // 두 캐릭터가 겹치지 않게 밀어냄
+  // 두 캐릭터가 겹치지 않게 밀어냄 (온라인에서는 각자 자기 캐릭터만 밀어냄)
   function separate() {
     const { p, c } = s;
     if ([p.state, c.state].some((st) => st === 'down' || st === 'ko')) return;
@@ -400,13 +477,14 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     const min = 12;
     if (Math.abs(dx) < min && Math.abs(p.y - c.y) < 30) {
       const push = (min - Math.abs(dx)) / 2;
-      const sg = dx === 0 ? p.face : Math.sign(dx);
-      p.x = Math.max(8, Math.min(W - 8, p.x - sg * push));
-      c.x = Math.max(8, Math.min(W - 8, c.x + sg * push));
+      const sg = dx === 0 ? 1 : Math.sign(dx);
+      if (!online || me === p) p.x = Math.max(8, Math.min(W - 8, p.x - sg * push));
+      if (!online || me === c) c.x = Math.max(8, Math.min(W - 8, c.x + sg * push));
     }
   }
 
-  function endRound(type, winner) {
+  // result: 온라인에서 방장이 정해 보낸 결과 (왼쪽 캐릭터 기준)
+  function endRound(type, winner, result) {
     if (s.phase === 'end') return;
     s.phase = 'end';
     s.phaseT = 2.2;
@@ -416,28 +494,35 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
       play('ko');
       s.shake = 0.4;
     } else {
-      s.result = s.p.hp > s.c.hp ? 'win' : s.p.hp < s.c.hp ? 'lose' : 'draw';
+      s.result = result || (s.p.hp > s.c.hp ? 'win' : s.p.hp < s.c.hp ? 'lose' : 'draw');
       s.banner = '시간 끝';
       play('ko');
+      if (online && isHost) sendEv({ k: 'end', r: s.result });
     }
   }
 
   function finish() {
     s.over = true;
+    if (online) {
+      // 결과는 왼쪽 캐릭터 기준이라, 오른쪽인 사람은 뒤집어서 보여 줌
+      const mine = meIdx ? { win: 'lose', lose: 'win', draw: 'draw' }[s.result] : s.result;
+      return onGameOver(0, { title: { win: '승리!', lose: '패배', draw: '무승부' }[mine], pvp: true }); // 온라인 대전은 점수 없음
+    }
     const title = { win: '승리!', lose: '패배', draw: '무승부' }[s.result];
-    if (net) { sendState(); return onGameOver(0, { title, pvp: true }); } // 온라인 대전은 점수 없음
     if (s.result === 'win') s.score += 1000 + s.p.hp * 10 + Math.ceil(s.time) * 10;
     onScore(s.score);
     onGameOver(s.score, { title });
   }
 
   function update(dt) {
-    if (mode === 'guest') return guestUpdate(dt);
     // 맞는 순간 잠깐 멈춤 (손맛)
-    if (s.freeze > 0) { s.freeze -= dt; return; }
+    if (s.freeze > 0) {
+      s.freeze -= dt;
+      if (online) followFoe(dt);
+      return;
+    }
 
     const pin = playerInput();
-    const cin = mode === 'host' ? remoteInput() : aiInput(dt);
     let canAct = false;
 
     if (s.phase === 'ready') {
@@ -448,14 +533,16 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     } else if (s.phase === 'fight') {
       canAct = true;
       s.time -= dt;
-      if (s.time <= 0) { s.time = 0; endRound('time'); }
+      // 시간 끝은 방장만 정함 (들어온 사람은 방장의 결과를 기다림)
+      if (s.time <= 0) { s.time = 0; if (!online || isHost) endRound('time'); }
     } else if (s.phase === 'end') {
       s.phaseT -= dt;
       if (s.phaseT <= 0 && !s.over) return finish();
     }
 
-    stepFighter(s.p, s.c, canAct ? pin : EMPTY, dt);
-    stepFighter(s.c, s.p, canAct ? cin : EMPTY, dt);
+    stepFighter(me, foe, canAct ? pin : EMPTY, dt);
+    if (online) followFoe(dt);
+    else stepFighter(foe, me, canAct ? aiInput(dt) : EMPTY, dt);
     separate();
 
     for (const f of [s.p, s.c]) {
@@ -602,6 +689,11 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
       const f = meIdx ? s.c : s.p;
       text('▼나', f.x, GROUND - f.y - 46, 8, PAL.Y);
     }
+    // 온라인 대전: 상대 화면이 얼마나 늦게 보이는지 (왕복 시간의 절반)
+    if (online && ping) {
+      const sec = ping / 2000;
+      text(`지연 ${sec.toFixed(2)}초`, W / 2, H - 6, 8, sec < 0.1 ? PAL.G : sec < 0.2 ? PAL.Y : PAL.O);
+    }
     // 남은 시간
     ctx.fillStyle = LINE; ctx.fillRect(71, 2, 18, 13);
     text(String(Math.ceil(s.time)), 80, 9, 10, s.time <= 10 ? PAL.O : PAL.W);
@@ -637,7 +729,7 @@ export function createFighter(canvas, { onScore, onGameOver, net = null, names =
     const dt = Math.min((t - last) / 1000, 0.05);
     last = t;
     if (!s.over) update(dt);
-    if (mode === 'host' && !s.over && (sendT -= dt) <= 0) { sendT = SEND_GAP; sendState(); }
+    if (online && !s.over && (sendT -= dt) <= 0) sendNow();
     draw();
     if (!s.over) raf = requestAnimationFrame(loop);
   }
