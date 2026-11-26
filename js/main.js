@@ -22,7 +22,7 @@ const GAMES = [
   { id: 'bungeo', name: '붕어빵 타이쿤', ready: true, isNew: true, create: createBungeo, size: [1080, 1920], unit: '원',
     help: '빈 틀을 눌러 반죽, 한 번 더 눌러 속!\n노릇해지면 뒤집고, 또 노릇하면 꺼내기\n너무 오래 두면 타요\n\n손님을 눌러 주문대로 팔고\n하루(60초) 매출 목표를 채우세요\n날이 갈수록 손님이 까다로워져요\n장사가 끝나면 임대료! 못 내면 파산' },
   { id: 'penguin', name: '펭귄 얼음 점프', ready: true, isNew: true, create: createPenguin,
-    help: '터치하면 펭귄이 위쪽 얼음으로 폴짝!\n얼음 한가운데 착지하면 퍼펙트\n\n오래 서 있으면 얼음이 녹아요\n생선은 보너스, 물개는 조심!' },
+    help: '터치하면 펭귄이 위쪽 얼음으로 폴짝!\n얼음 한가운데 착지하면 퍼펙트\n퍼펙트 4번이면 무지개 질주!\n\n오래 서 있으면 얼음이 녹아요\n생선은 보너스, 물개는 조심!' },
   { id: 'dodge', name: '별똥별 피하기', ready: false },
   { id: 'jump', name: '폴짝 점프', ready: false },
   { id: 'rhythm', name: '박자 맞추기', ready: false },

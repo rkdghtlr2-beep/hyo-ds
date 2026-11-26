@@ -200,18 +200,18 @@ export const ICONS = {
     pixelEllipse(ctx, 8, 14, 7, 2, '#eef8ff');
     px(ctx, '#9cc8ec', 2, 15, 12, 1);
     const p = [
-      '..KKKK..',
-      '.KKKKKK.',
-      '.KWKKWK.',
-      '.KKOOKK.',
-      'KRRRRRRK',
-      'KKWWWWKK',
-      '.KWWWWK.',
-      '.KWWWWK.',
-      '..KKKK..',
-      '..O..O..',
+      '...KKKK...',
+      '.KKKKKKKK.',
+      'KKWWKKWWKK',
+      'KKWKKKKWKK',
+      'KOOOOOOOOK',
+      'KKOOOOOOKK',
+      'KKKWWWWKKK',
+      '.KKWWWWKK.',
+      '..KKKKKK..',
+      '..OO..OO..',
     ];
-    p.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], 4 + x, 3 + y)));
+    p.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], 3 + x, 3 + y)));
   },
   stack(ctx) {
     px(ctx, PAL.D, 0, 0, 16, 16);
