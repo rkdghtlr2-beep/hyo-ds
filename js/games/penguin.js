@@ -17,63 +17,63 @@ const FEVER_FILL = 0.25; // 퍼펙트 한 번에 차는 피버 게이지 (4번�
 const FEVER_TIME = 5;    // 무지개 질주 시간(초)
 const FEVER_JUMP = 0.18; // 질주 중 점프 시간
 
-// 펭귄 (까만 몸, 크고 하얀 눈, 넓적한 주황 부리)
+// 아기 펭귄 (까만 머리, 하트 모양 하얀 얼굴, 반짝이는 눈, 작은 부리)
 const TOP = [
   '.....KKKKKK.....',
   '...KKKKKKKKKK...',
+  '..KKKKKKKKKKKK..',
+  '.KKKKWWKKWWKKKK.',
+  '.KKWWWWWWWWWWKK.',
 ];
 const EYES = [
-  '..KKWWWKKWWWKK..',
-  '.KKKWKWKKWKWKKK.',
-  '.KKKWWWKKWWWKKK.',
+  'KKWWWKKWWKKWWWKK',
+  'KKWWWKKWWKKWWWKK',
+  'KKWWWKKWWKKWWWKK',
 ];
 // 눈 깜빡임
 const BLINK = [
-  '..KKKKKKKKKKKK..',
-  '.KKKWWWKKWWWKKK.',
-  '.KKKKKKKKKKKKKK.',
+  'KKWWWWWWWWWWWWKK',
+  'KKWWKKKWWKKKWWKK',
+  'KKWWWWWWWWWWWWKK',
 ];
 // 퍼펙트: 하트 눈
 const HEART = [
-  '..KKPKPKKPKPKK..',
-  '.KKKPPPKKPPPKKK.',
-  '.KKKKPKKKKPKKKK.',
+  'KKWWRWRWWRWRWWKK',
+  'KKWWRRRWWRRRWWKK',
+  'KKWWWRWWWWRWWWKK',
 ];
 // 물에 빠짐: X X 눈
 const DEAD = [
-  '..KKWKWKKWKWKK..',
-  '.KKKKWKKKKWKKKK.',
-  '.KKKWKWKKWKWKKK.',
+  'KKWWKWKWWKWKWWKK',
+  'KKWWWKWWWWKWWWKK',
+  'KKWWKWKWWKWKWWKK',
 ];
 // 무지개 질주: 선글라스
 const SHADES = [
-  '..KDDDDKKDDDDK..',
-  '.DDWDDDDDDWDDDD.',
-  '.KKDDDDKKDDDDKK.',
+  'KKDDDDDDDDDDDDKK',
+  'KKWDWDDWWDWDDWKK',
+  'KKWWDDWWWWDDWWKK',
 ];
 const BEAK = [
-  '.KKKOOOOOOOOKKK.',
-  'KKKOORRRRRROOKKK',
-  '.KKKOOOOOOOOKKK.',
+  'KKWPWWWOOWWWPWKK',
+  '.KKKSWWWWWWSKKK.',
 ];
 const BODY = [
-  '.KKKKWWWWWWKKKK.',
-  '.KKKWWWWWWWWKKK.',
-  '.KKKWWWWWWWWKKK.',
-  '.KKKWWWWWWWWKKK.',
-  '..KKKWWWWWWKKK..',
+  '.KKWWWWWWWWWWKK.',
+  'KKKWWWWWWWWWWKKK',
+  'KOKWWWWWWWWWWKOK',
+  '..KKWWWWWWWWKK..',
   '...KKKKKKKKKK...',
-  '..OOOO....OOOO..',
+  '...OOO....OOO...',
 ];
 // 점프할 때 (날개를 쫙 펼침)
 const BODY_JUMP = [
-  '.KKKKWWWWWWKKKK.',
-  'KKKKWWWWWWWWKKKK',
-  'KK.KWWWWWWWWK.KK',
-  '...KWWWWWWWWK...',
-  '..KKKWWWWWWKKK..',
+  'KKKWWWWWWWWWWKKK',
+  'OKKWWWWWWWWWWKKO',
+  '..KWWWWWWWWWWK..',
+  '..KKWWWWWWWWKK..',
   '...KKKKKKKKKK...',
-  '.OOOO......OOOO.',
+  '..OOO......OOO..',
 ];
 SPRITES.penguin = [...TOP, ...EYES, ...BEAK, ...BODY];
 SPRITES.penguinBlink = [...TOP, ...BLINK, ...BEAK, ...BODY];
@@ -125,16 +125,19 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
   let s, raf, last;
 
   // ---------- 얼음 만들기 (n번째 줄, 올라갈수록 어려움) ----------
+  // 난이도는 '걸어서 건넌 얼음' 기준 (무지개 질주로 건넌 얼음은 20%만 셈)
   function makeFloe(n) {
-    const w = n === 0 ? 70 : clamp(62 - n * 1.3 + rand(-4, 4), 24, 64);
-    const thin = n >= 15 && Math.random() < 0.18;          // 살얼음: 빨리 녹음
-    const seal = n >= 12 && !thin && w > 38 && Math.random() < 0.22;
+    const d = Math.max(0, n - (s ? s.skip : 0));
+    const w = n === 0 ? 70 : clamp(62 - d * 0.6 + rand(-4, 4), 34, 64);
+    const thin = d >= 20 && Math.random() < 0.15;          // 살얼음: 빨리 녹음
+    const seal = d >= 14 && !thin && w > 38 && Math.random() < 0.2;
     const fish = n >= 4 && !seal && Math.random() < 0.25;
     return {
       n, w,
       x: n === 0 ? W / 2 : rand(w / 2 + 6, W - w / 2 - 6),
       dir: Math.random() < 0.5 ? -1 : 1,
-      speed: Math.min(200, 40 + n * 4.2) * rand(0.85, 1.15), // 갈수록 빨라짐
+      speed: Math.min(95, 32 + d * 1.6) * rand(0.85, 1.15), // 갈수록 빨라짐
+      d,
       thin,
       // 물개·생선은 얼음 가운데에서 떨어진 위치(왼쪽 또는 오른쪽)
       seal: seal ? (Math.random() < 0.5 ? -1 : 1) * (w / 2 - 10) : null,
@@ -144,10 +147,11 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
   }
 
   // 한 얼음에 서 있을 수 있는 시간 (올라갈수록 짧아짐)
-  const standLimit = (f) => (f.thin ? 1.3 : Math.max(1.8, 4.2 - f.n * 0.07));
+  const standLimit = (f) => (f.thin ? 2.1 : Math.max(2.8, 4.6 - f.d * 0.03));
 
   function reset() {
     const floes = [];
+    s = null;
     for (let i = 0; i < 7; i++) floes.push(makeFloe(i));
     s = {
       floes, cur: 0,                 // 지금 서 있는 얼음 번호
@@ -155,7 +159,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
       t: 0, stand: 0, cracked: 0,
       camY: 0, score: 0, perfect: 0, perfects: 0, fishes: 0,
       fx: [], shake: 0, time: 0, started: false, landSquash: 0, tease: 0,
-      jumpT: JUMP_T, gauge: 0, fever: 0, feverJump: false, queued: false, feverRuns: 0,
+      jumpT: JUMP_T, skip: 0, gauge: 0, fever: 0, feverJump: false, queued: false, feverRuns: 0,
     };
   }
 
@@ -252,6 +256,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
   // 질주 중 착지: 무조건 얼음 한가운데로 (물개도 튕겨 냄)
   function feverLand(f) {
     s.cur++;
+    s.skip += 0.8;
     s.state = 'stand';
     s.stand = 0;
     s.cracked = 0;
@@ -444,7 +449,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
       else if (s.time % 3 < 0.12) name = 'penguinBlink';      // 가끔 눈 깜빡임
     }
     const feetY = Math.round(y - lift + 2);
-    const w = Math.round(32 * sx), h = Math.round(30 * sy);
+    const w = Math.round(32 * sx), h = Math.round(32 * sy);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(Math.round(s.px), feetY);

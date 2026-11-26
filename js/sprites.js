@@ -203,12 +203,12 @@ export const ICONS = {
       '...KKKK...',
       '.KKKKKKKK.',
       'KKWWKKWWKK',
-      'KKWKKKKWKK',
-      'KOOOOOOOOK',
-      'KKOOOOOOKK',
+      'KWKKWWKKWK',
+      'KWKKWWKKWK',
+      'KWPWOOWPWK',
       'KKKWWWWKKK',
-      '.KKWWWWKK.',
-      '..KKKKKK..',
+      'OKWWWWWWKO',
+      '.KKKKKKKK.',
       '..OO..OO..',
     ];
     p.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], 3 + x, 3 + y)));
