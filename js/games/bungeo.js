@@ -51,6 +51,8 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     pops: [],
     smoke: [],
     total: 0, // 지금까지 번 돈 합계 (= 점수)
+    rating: 5, shownRating: 5, ratingHitAt: 0, // 평점 (BB_RATING_MAX 와 같게)
+    upgraded: false, // 오늘 강화를 했는지 (하루에 한 번만)
   };
   // 난이도: 날이 갈수록 목표·임대료가 크게 오르고, 손님은 급해지고 주문은 많아지고, 붕어빵은 빨리 탐
   // (보통 3~5일차에 끝나도록 맞춤)
@@ -59,7 +61,13 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
   // 하루 장사가 끝나면 모은 돈에서 임대료를 냄. 못 내면 파산.
   const bbRent = (day) => round500(2000 * 1.7 ** (day - 1));        // 2,000 → 3,500 → 6,000 → 10,000 …
   const bbPatience = (day) => Math.max(8, 30 - (day - 1) * 5);      // 손님 기다리는 시간(초)
-  const bbMaxOrder = (day) => Math.min(6, 1 + day);                 // 한 손님 최대 주문 개수
+  const bbMinOrder = (day) => Math.min(5, 1 + Math.floor((day - 1) / 2)); // 한 손님 최소 주문 개수: 1,1,2,2,3,3…
+  const bbMaxOrder = (day) => Math.min(9, 1 + day);                 // 한 손님 최대 주문 개수: 2,3,4,5,6…
+  // 평점: 체력처럼 5.0에서 시작해 손님이 못 받고 나갈 때마다 깎이고, 0이 되면 가게 문을 닫음 (다음 날로 이어짐)
+  const BB_RATING_MAX = 5;
+  const BB_RATING_LOSS = 0.5;
+  const BB_ANGRY_WORDS = ["악플 각오해요!", "별점 1개 드림!", "다신 안 와요!", "리뷰 테러각!", "칵 퉤!"];
+  const BB_HAPPY_WORDS = ["잘 먹을게요~", "붕어빵 최고~", "또 올게요!", "따끈따끈해~", "단골 할게요!"];
   const bbGap = (day) => Math.max(2, 6.5 - (day - 1) * 1.2);       // 손님이 오는 간격(초)
   const bbBurnSpeed = (day) => 1 + (day - 1) * 0.35;                // 노릇해진 뒤 타는 속도 배수
   const fmtWon = (n) => n.toLocaleString("ko-KR");
@@ -182,14 +190,31 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
 
   let bbTexts = [];
   function txt(t, x, y, o = {}) {
-    bbTexts.push({ t: String(t), x, y, size: o.size || 8, color: o.color || "#fff", align: o.align || "left", stroke: o.stroke === undefined ? "#2a1d14" : o.stroke, weight: o.weight || 800 });
+    bbTexts.push({ t: String(t), x, y, size: o.size || 8, color: o.color || "#fff", align: o.align || "left", stroke: o.stroke === undefined ? "#2a1d14" : o.stroke, weight: o.weight || 800, parts: o.parts });
   }
   function flushTexts() {
     bbCtx.textBaseline = "middle";
     for (const t of bbTexts) {
       bbCtx.font = `${t.weight} ${t.size * BB_PX}px ${BB_FONT}`;
-      bbCtx.textAlign = t.align;
       const X = t.x * BB_PX, Y = t.y * BB_PX;
+      // 글자마다 색이 다른 문구 (예: 간판의 빨간 하트) — 가운데 정렬로 이어 그림
+      if (t.parts) {
+        bbCtx.textAlign = "left";
+        let px = X - t.parts.reduce((w, p) => w + bbCtx.measureText(p.t).width, 0) / 2;
+        for (const p of t.parts) {
+          if (t.stroke) {
+            bbCtx.lineJoin = "round";
+            bbCtx.lineWidth = BB_PX * 1.6;
+            bbCtx.strokeStyle = t.stroke;
+            bbCtx.strokeText(p.t, px, Y);
+          }
+          bbCtx.fillStyle = p.color || t.color;
+          bbCtx.fillText(p.t, px, Y);
+          px += bbCtx.measureText(p.t).width;
+        }
+        continue;
+      }
+      bbCtx.textAlign = t.align;
       if (t.stroke) {
         bbCtx.lineJoin = "round";
         bbCtx.lineWidth = BB_PX * 1.6;
@@ -213,7 +238,8 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
   }
 
   // ---------- 화면 구성 ----------
-  const SLOT_X = [10, 74, 138, 202];
+  // 손님 자리: 말풍선(폭 58)이 화면 가장자리에 걸리지 않고 서로 같은 간격이 되게
+  const SLOT_X = [20, 84, 148, 212];
 
   function drawHud() {
     rect(0, 0, BB_W, 52, "#3b2a20");
@@ -234,10 +260,15 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
 
     txt(`오늘 ${fmtWon(bb.earn)} / ${fmtWon(bbGoal(bb.day))}원`, 8, 32, { size: 7.5 });
     txt(`모은 돈 ${fmtWon(bb.bank)}원`, 262, 32, { size: 7.5, align: "right", color: "#ffe9a8" });
-    const ratio = Math.min(1, bb.earn / bbGoal(bb.day));
-    pbox(8, 41, 254, 8, "#22160f", "#1b120c");
-    if (ratio > 0) rect(9, 42, Math.max(1, 252 * ratio), 6, ratio >= 1 ? "#58c48b" : "#f5a623");
-    if (ratio > 0) rect(9, 42, Math.max(1, 252 * ratio), 1, ratio >= 1 ? "#8fe0b2" : "#ffd27a");
+    // 평점 바: 체력처럼 꽉 찬 상태에서 시작해, 손님이 못 받고 나갈 때마다 깎임
+    const ratio = Math.max(0, bb.rating / BB_RATING_MAX);
+    const lost = Math.max(0, bb.shownRating / BB_RATING_MAX);
+    const now = performance.now();
+    pbox(8, 41, 254, 9, "#22160f", "#1b120c");
+    if (lost > ratio) rect(9, 42, 252 * lost, 7, now - bb.ratingHitAt < 150 ? "#ffffff" : "#e5484d"); // 방금 깎인 부분
+    const col = ratio > 0.6 ? ["#58c48b", "#8fe0b2"] : ratio > 0.3 ? ["#f5a623", "#ffd27a"] : ["#e5484d", "#ff8a8a"];
+    if (ratio > 0) { rect(9, 42, Math.max(1, 252 * ratio), 7, col[0]); rect(9, 42, Math.max(1, 252 * ratio), 1, col[1]); }
+    txt(`평점 ★ ${bb.rating.toFixed(1)} / ${BB_RATING_MAX.toFixed(1)}`, 135, 46, { size: 5.5, align: "center" });
   }
 
   function drawShop(now) {
@@ -253,8 +284,8 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     }
     rect(0, 54, BB_W, 2, "#a8322a");
     // 가게 이름판
-    pbox(75, 74, 120, 14, "#7a4a2a", "#3b2a20", "#9a6a44");
-    txt("효식이네 붕어빵", 135, 81, { size: 7, align: "center", color: "#ffe9a8" });
+    pbox(65, 74, 140, 14, "#7a4a2a", "#3b2a20", "#9a6a44");
+    txt("", 135, 81, { size: 7, color: "#ffe9a8", parts: [{ t: "효식" }, { t: "♥", color: "#ff5a6e" }, { t: "유진이네 붕어빵가게" }] });
 
     // 손님
     for (const c of bb.customers) drawCustomer(c, now);
@@ -272,15 +303,44 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
 
   function drawCustomer(c, now) {
     const r = c.patience / c.max;
-    const angry = r < 0.25 && !c.leaving;
-    const shake = angry ? Math.round(Math.sin(now / 40)) : 0;
-    const bob = Math.round(Math.abs(Math.sin(now / 300 + c.seed)) * 1);
+    const fuming = !!c.angryMsg; // 못 받고 짜증 내며 나가는 중
+    const angry = (r < 0.25 && !c.leaving) || fuming;
+    const shake = angry ? Math.round(Math.sin(now / (fuming ? 25 : 40)) * (fuming ? 2 : 1)) : 0;
+    const bob = fuming ? Math.round(Math.abs(Math.sin(now / 60)) * 2) : Math.round(Math.abs(Math.sin(now / 300 + c.seed)) * 1);
     const x = Math.round(c.x) + shake;
-    const pal = { ...c.pal, s: angry ? mix(c.pal.s, "#ff6b6b", 0.45) : c.pal.s };
+    const pal = { ...c.pal, s: angry ? mix(c.pal.s, "#ff6b6b", fuming ? 0.6 : 0.45) : c.pal.s };
     sprite(PERSON, pal, x, 128 - bob, 2, "#1b1420");
 
-    // 말풍선
     const cx = x + 14;
+    // 짜증 내며 나가는 손님: 빨간 말풍선 + 김(화남 표시)
+    if (fuming) {
+      const bw = 64, bh = 16;
+      const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;
+      pbox(bx, by, bw, bh, "#fff0f0", "#c0392b");
+      rect(cx - 2, by + bh - 1, 5, 2, "#fff0f0");
+      rect(cx - 1, by + bh + 1, 3, 2, "#fff0f0");
+      txt(c.angryMsg, bx + bw / 2, by + 8, { size: 6.5, align: "center", color: "#d0312d", stroke: null });
+      // 머리 위 화남 표시
+      const ax = x + 22, ay = 124 - bob;
+      rect(ax, ay, 2, 4, "#e5484d"); rect(ax + 4, ay, 2, 4, "#e5484d"); rect(ax - 1, ay + 1, 8, 2, "#e5484d");
+      return;
+    }
+    // 붕어빵을 받은 손님: 초록 말풍선으로 고마움 표시 + 하트
+    if (c.happyMsg) {
+      const bw = 64, bh = 16;
+      const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;
+      pbox(bx, by, bw, bh, "#f0fff4", "#2fa37a");
+      rect(cx - 2, by + bh - 1, 5, 2, "#f0fff4");
+      rect(cx - 1, by + bh + 1, 3, 2, "#f0fff4");
+      txt(c.happyMsg, bx + bw / 2, by + 8, { size: 6.5, align: "center", color: "#1f8a5c", stroke: null });
+      // 머리 위로 떠오르는 작은 하트
+      const hy = 126 - Math.round((now / 40) % 8);
+      const hx = x + 22;
+      rect(hx, hy, 2, 2, "#ff5a6e"); rect(hx + 3, hy, 2, 2, "#ff5a6e"); rect(hx, hy + 1, 5, 2, "#ff5a6e"); rect(hx + 1, hy + 3, 3, 1, "#ff5a6e"); rect(hx + 2, hy + 4, 1, 1, "#ff5a6e");
+      return;
+    }
+
+    // 말풍선
     const bw = 58, bh = c.order.red && c.order.cream ? 26 : 16;
     const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;
     pbox(bx, by, bw, bh, "#ffffff", "#2a1d14");
@@ -318,6 +378,12 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
       txt(BB_NAME[k], x + 29, 236 - lift, { size: 6.5, align: "center", color: "#5a4636", stroke: null });
       txt(`×${bb.tray[k]}`, x + 52, 236 - lift, { size: 8, align: "right", color: "#3b2a20", stroke: null });
       rect(x + 4, 241 - lift, 50, 3, k === "red" ? "#8b3a2b" : "#f0b400");
+      // 고른 맛이면 테두리 강조, 진열대를 눌러도 맛을 바꿀 수 있음
+      if (bb.filling === k) {
+        rect(x - 1, 201 - lift, 60, 2, "#e67e22"); rect(x - 1, 247 - lift, 60, 2, "#e67e22");
+        rect(x - 1, 201 - lift, 2, 48, "#e67e22"); rect(x + 57, 201 - lift, 2, 48, "#e67e22");
+      }
+      hit(x, 202, 58, 46, () => (bb.filling = k));
     });
     // 속재료 고르기
     [["red", 202, "팥", "1,000원", "#7a2e22"], ["cream", 227, "슈크림", "1,200원", "#f0c419"]].forEach(([k, y, name, price, dot]) => {
@@ -577,7 +643,9 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     const used = new Set(bb.customers.filter((c) => !c.leaving).map((c) => c.slot));
     const slot = [0, 1, 2, 3].find((s) => !used.has(s));
     if (slot === undefined) return;
-    const total = 1 + Math.floor(Math.random() * bbMaxOrder(bb.day));
+    // 날이 갈수록 최소·최대 주문 개수가 모두 늘어남
+    const min = bbMinOrder(bb.day), max0 = bbMaxOrder(bb.day);
+    const total = min + Math.floor(Math.random() * (max0 - min + 1));
     const red = Math.floor(Math.random() * (total + 1));
     const max = bbPatience(bb.day) * (1 + bb.patienceBoost * 0.2) + total * 1.5;
     bb.customers.push({
@@ -609,15 +677,21 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     bbPop(p, `+${fmtWon(pay + tip)}원`, "good");
     sfx.pyong(true);
     c.leaving = true;
+    c.happyMsg = pick(BB_HAPPY_WORDS);
+    c.fume = 0.7; // 잠깐 인사하고 나감
   }
 
   function update(dt) {
     // 손님 걷기 (들어오기 / 나가기)는 멈춤 중에도 마무리
     for (const c of bb.customers) {
-      if (c.leaving) c.x += dt * 160;
+      // 짜증 난 손님은 잠깐 제자리에서 씩씩대다가 쿵쿵 나감
+      // 고마워하는 손님도 잠깐 인사하고 나감
+      if ((c.angryMsg || c.happyMsg) && (c.fume -= dt) > 0) continue;
+      if (c.leaving) c.x += dt * (c.angryMsg ? 110 : 160);
       else c.x += clamp(SLOT_X[c.slot] - c.x, -dt * 140, dt * 140);
     }
     bb.customers = bb.customers.filter((c) => c.x < BB_W + 20);
+    if (bb.shownRating > bb.rating) bb.shownRating = Math.max(bb.rating, bb.shownRating - dt * 1.2);
 
     if (!bb.running || bb.paused) return;
     bb.time -= dt;
@@ -646,18 +720,37 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
       c.patience -= dt;
       if (c.patience <= 0) {
         bb.angry++;
-        bbPop({ x: c.x + 14, y: 100 }, "화나서 떠났어요", "bad");
         c.leaving = true;
+        c.angryMsg = pick(BB_ANGRY_WORDS);
+        c.fume = 0.9;
+        bb.rating = Math.max(0, bb.rating - BB_RATING_LOSS);
+        bb.ratingHitAt = performance.now();
+        bbPop({ x: 135, y: 60 }, `평점 -${BB_RATING_LOSS.toFixed(1)}`, "bad");
       }
     }
 
+    if (bb.rating <= 0) return closeShop();
     if (bb.time <= 0) endDay();
+  }
+
+  // 평점이 0이 되면 그 자리에서 가게 문을 닫음
+  function closeShop() {
+    bb.running = false;
+    bb.total += bb.earn;
+    onScore(bb.total);
+    sfx.ko();
+    bb.overlay = null;
+    bb.over = true;
+    onGameOver(bb.total, {
+      title: "평점 0점… 폐업",
+      detail: `악플이 쌓여 ${bb.day}일차에 문을 닫았어요\n번 돈 ${fmtWon(bb.total)}원\n판매 ${bb.served}명 · 화난 손님 ${bb.angry}명`,
+    });
   }
 
   function startDay() {
     Object.assign(bb, {
       running: true, paused: false, overlay: null,
-      earn: 0, time: BB_DAY_SECONDS, served: 0, angry: 0, burnt: 0,
+      earn: 0, time: BB_DAY_SECONDS, served: 0, angry: 0, burnt: 0, upgraded: false,
       tray: { red: 0, cream: 0 }, spawnIn: 1.5, customers: [], pops: [], smoke: [],
     });
     buildMolds();
@@ -682,6 +775,7 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     const lines = [
       { t: "판매한 손님", r: `${bb.served}명` },
       { t: "화나서 떠난 손님", r: `${bb.angry}명` },
+      { t: "남은 평점", r: `★ ${bb.rating.toFixed(1)}` },
       { t: "태운 붕어빵", r: `${bb.burnt}개` },
       ...(leftover ? [{ t: "마감 세일 (남은 붕어빵 반값)", r: `+${fmtWon(leftover)}원` }] : []),
       { t: "오늘 매출 / 목표", r: `${fmtWon(bb.earn)} / ${fmtWon(goal)}원` },
@@ -715,7 +809,9 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
       lines: [
         ...lines,
         { t: "" },
-        { t: `모은 돈 ${fmtWon(bb.bank)}원으로 업그레이드하세요`, color: "#8a6a4f" },
+        bb.upgraded
+          ? { t: "오늘 강화를 마쳤어요 · 내일 또 할 수 있어요", color: "#2fa37a" }
+          : { t: `모은 돈 ${fmtWon(bb.bank)}원으로 하나만 강화할 수 있어요`, color: "#8a6a4f" },
         { t: `내일 임대료는 ${fmtWon(bbRent(bb.day + 1))}원 · 돈을 조금 남겨 두세요`, color: "#d9483b" },
       ],
       buttons: [
@@ -725,10 +821,11 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
           return {
             label: u.label,
             right: maxed ? "최대" : `${fmtWon(cost)}원`,
-            disabled: maxed || bb.bank < cost,
+            disabled: maxed || bb.bank < cost || bb.upgraded, // 강화는 하루에 한 번만
             fn: () => {
               bb.bank -= cost;
               u.apply();
+              bb.upgraded = true;
               showShop(lines);
             },
           };
@@ -739,7 +836,8 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
   }
 
   function resetGame() {
-    Object.assign(bb, { day: 1, bank: 0, moldCount: 4, heat: 1, patienceBoost: 0, total: 0, over: false });
+    Object.assign(bb, { day: 1, bank: 0, moldCount: 4, heat: 1, patienceBoost: 0, total: 0, over: false,
+      rating: BB_RATING_MAX, shownRating: BB_RATING_MAX, ratingHitAt: 0 });
     onScore(0);
     startDay();
   }

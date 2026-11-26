@@ -395,7 +395,7 @@ export function createMole(canvas, { onScore, onGameOver }) {
       `두더지 ${c.mole}번`,
       `황금 두더지 ${c.gold}번`,
       `피버타임 ${c.fever}번`,
-      `헛손질 ${c.miss}번`,
+      `헛방질 ${c.miss}번`,
     ].join('\n');
     onGameOver(s.score, { detail });
   }

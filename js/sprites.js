@@ -193,6 +193,26 @@ export const ICONS = {
     fish.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], x, 5 + y)));
     px(ctx, PAL.N, 0, 14, 16, 2);
   },
+  // 펭귄 얼음 점프: 바다 위 얼음에 선 펭귄
+  penguin(ctx) {
+    px(ctx, '#1d5fa3', 0, 0, 16, 16);
+    px(ctx, '#3d86cc', 1, 3, 4, 1); px(ctx, '#3d86cc', 10, 2, 4, 1);
+    pixelEllipse(ctx, 8, 14, 7, 2, '#eef8ff');
+    px(ctx, '#9cc8ec', 2, 15, 12, 1);
+    const p = [
+      '..KKKK..',
+      '.KKKKKK.',
+      '.KWKKWK.',
+      '.KKOOKK.',
+      'KRRRRRRK',
+      'KKWWWWKK',
+      '.KWWWWK.',
+      '.KWWWWK.',
+      '..KKKK..',
+      '..O..O..',
+    ];
+    p.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], 4 + x, 3 + y)));
+  },
   stack(ctx) {
     px(ctx, PAL.D, 0, 0, 16, 16);
     const c = [PAL.R, PAL.O, PAL.Y, PAL.G, PAL.B];

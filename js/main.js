@@ -2,6 +2,7 @@ import { makeIcon, drawSprite, pixelEllipse, PAL } from './sprites.js';
 import { createMole } from './games/mole.js';
 import { createFighter } from './games/fighter.js';
 import { createBungeo } from './games/bungeo.js';
+import { createPenguin } from './games/penguin.js';
 import { initPad, resetPad } from './pad.js';
 import { createRoom, joinRoom, submitScore, loadRanking, login, GM } from './net.js';
 
@@ -20,6 +21,8 @@ const GAMES = [
   // 점수 = 번 돈 합계 (원)
   { id: 'bungeo', name: '붕어빵 타이쿤', ready: true, isNew: true, create: createBungeo, size: [1080, 1920], unit: '원',
     help: '빈 틀을 눌러 반죽, 한 번 더 눌러 속!\n노릇해지면 뒤집고, 또 노릇하면 꺼내기\n너무 오래 두면 타요\n\n손님을 눌러 주문대로 팔고\n하루(60초) 매출 목표를 채우세요\n날이 갈수록 손님이 까다로워져요\n장사가 끝나면 임대료! 못 내면 파산' },
+  { id: 'penguin', name: '펭귄 얼음 점프', ready: true, isNew: true, create: createPenguin,
+    help: '터치하면 펭귄이 위쪽 얼음으로 폴짝!\n얼음 한가운데 착지하면 퍼펙트\n\n오래 서 있으면 얼음이 녹아요\n생선은 보너스, 물개는 조심!' },
   { id: 'dodge', name: '별똥별 피하기', ready: false },
   { id: 'jump', name: '폴짝 점프', ready: false },
   { id: 'rhythm', name: '박자 맞추기', ready: false },
@@ -50,12 +53,12 @@ function addRecord(id, score) {
   return rec.at;
 }
 
-function toast(msg) {
+function toast(msg, ms = 1600) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.remove('hidden');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.add('hidden'), 1600);
+  toast.timer = setTimeout(() => t.classList.add('hidden'), ms);
 }
 
 // 홈 화면 그림
@@ -384,14 +387,31 @@ function startPvp(g, r, names) {
     },
   });
 
-  // 상대가 나가면 알려 줌
-  r.onOpponent((op) => {
-    if (room !== r || op) return;
-    const self = r;
+  // 대전 끝내기 (상대가 나갔거나 오래 연결이 끊김)
+  let lostTimer = null;
+  const endMatch = (text) => {
+    if (room !== r) return;
+    clearTimeout(lostTimer);
     current?.stop();
     room = null;
-    self.leave();
-    showOverlay('대전 끝', '상대가 나갔어요', '확인', () => openGame(g));
+    r.leave();
+    showOverlay('대전 끝', text, '확인', () => openGame(g));
+  };
+
+  // 상대가 '나가기'를 누르면 바로 끝
+  r.onOpponent((op) => { if (!op) endMatch('상대가 나갔어요'); });
+
+  // 상대 연결이 잠깐 끊기면 20초까지 기다려 줌 (데이터가 잠깐 흔들리거나 다른 앱을 잠깐 봐도 튕기지 않게)
+  r.onFoeOnline((on) => {
+    if (room !== r) return;
+    if (on === false && !lostTimer) {
+      toast('상대 연결이 불안정해요. 기다리는 중…', 4000);
+      lostTimer = setTimeout(() => endMatch('상대 연결이 끊겼어요'), 20000);
+    } else if (on === true && lostTimer) {
+      clearTimeout(lostTimer);
+      lostTimer = null;
+      toast('상대가 다시 연결됐어요');
+    }
   });
 
   if (r.role === 'host') {

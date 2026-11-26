@@ -43,27 +43,38 @@ function makeRoom(code, role) {
   const listen = (p, cb) => { const rf = r(p); onValue(rf, (snap) => cb(snap.val())); subs.push(rf); };
   const other = role === 'host' ? 'guest' : 'host';
 
-  // 연결이 끊기면 서버가 알아서 정리
-  if (role === 'host') onDisconnect(ref(db, base)).remove();
-  else onDisconnect(r('guest')).remove();
+  // 연결 상태 표시 (on/host, on/guest)
+  // 휴대폰 연결이 잠깐 끊겨도 방을 바로 지우지 않고 '끊김'으로만 표시 → 다시 연결되면 '연결됨'으로 되돌림
+  // (예전에는 끊기는 순간 서버가 방을 지워서, 데이터가 잠깐만 흔들려도 대전이 튕겼음)
+  const myOn = r(`on/${role}`);
+  const connRef = ref(db, '.info/connected');
+  onValue(connRef, (snap) => {
+    if (snap.val() !== true) return;
+    onDisconnect(myOn).set(false); // 다시 연결될 때마다 새로 걸어 둠 (한 번 실행되면 사라지므로)
+    set(myOn, true);
+  });
+  subs.push(connRef);
 
   return {
     code, role,
     // 상대 정보: { nick } 또는 null (나감)
     onOpponent(cb) { listen(other, cb); },
+    // 상대 연결 상태: true 연결됨, false 끊김, null 아직 모름
+    onFoeOnline(cb) { listen(`on/${other}`, cb); },
     onRound(cb) { listen('round', cb); },
     onReady(cb) { listen('ready', (v) => cb(v || {})); },
     // 각자 자기 캐릭터 상태를 자기 칸(p0 방장, p1 들어온 사람)에 쓰고, 상대 칸을 읽음
     onFoe(cb) { listen(role === 'host' ? 'p1' : 'p0', cb); },
     send(v) { set(r(role === 'host' ? 'p0' : 'p1'), v); },
-    setRound(n) { update(ref(db, base), { round: n, ready: null }); },
+    setRound(n) { update(ref(db, base), { round: n, ready: null, at: Date.now() }); },
     ready(n) { set(r(`ready/${role}`), n); },
     async leave() {
       subs.forEach((rf) => off(rf));
       subs.length = 0;
       try {
+        await onDisconnect(myOn).cancel(); // 나간 뒤에 빈 방 흔적이 다시 생기지 않게
         if (role === 'host') await remove(ref(db, base));
-        else await update(ref(db, base), { guest: null, p1: null, [`ready/guest`]: null });
+        else await update(ref(db, base), { guest: null, p1: null, 'ready/guest': null, 'on/guest': null });
       } catch {}
     },
   };
@@ -76,7 +87,8 @@ export async function createRoom(nick) {
   for (let i = 0; i < 8; i++) {
     const code = String(1000 + Math.floor(Math.random() * 9000));
     const res = await runTransaction(ref(db, `rooms/${code}`), (cur) => {
-      if (cur) return; // 이미 쓰는 번호
+      // 이미 쓰는 번호 (단, 2시간 넘게 아무 움직임이 없는 방은 버려진 방으로 보고 새로 씀)
+      if (cur && Date.now() - (cur.at || 0) < 2 * 3600e3) return;
       return { host: { nick, uid: fb.uid }, round: 0, at: Date.now() };
     });
     if (res.committed) return makeRoom(code, 'host');
@@ -90,6 +102,7 @@ export async function joinRoom(code, nick) {
   const { db, ref, get, runTransaction } = fb;
   const room = (await get(ref(db, `rooms/${code}`))).val();
   if (!room || !room.host) throw new Error('없는 방 번호예요');
+  if (room.on && room.on.host === false) throw new Error('방장이 연결되어 있지 않아요');
   // 내 자리(guest)만 씀 (방장 정보까지 다시 쓰면 규칙에서 남의 이름을 쓰는 것으로 막힘)
   let full = false;
   const res = await runTransaction(ref(db, `rooms/${code}/guest`), (cur) => {
