@@ -3,8 +3,9 @@ import { createMole } from './games/mole.js';
 import { createFighter } from './games/fighter.js';
 import { createBungeo } from './games/bungeo.js';
 import { createPenguin } from './games/penguin.js';
+import { createDodge } from './games/dodge.js';
 import { initPad, resetPad } from './pad.js';
-import { createRoom, joinRoom, submitScore, loadRanking, login, GM } from './net.js';
+import { createRoom, joinRoom, submitScore, loadRanking, login, GM, isTestName } from './net.js';
 
 // 게임 화면 기본 크기 (세로형 휴대폰 비율)
 const W = 180;
@@ -23,7 +24,8 @@ const GAMES = [
     help: '빈 틀을 눌러 반죽, 한 번 더 눌러 속!\n노릇해지면 뒤집고, 또 노릇하면 꺼내기\n너무 오래 두면 타요\n\n손님을 눌러 주문대로 팔고\n하루(60초) 매출 목표를 채우세요\n날이 갈수록 손님이 까다로워져요\n장사가 끝나면 임대료! 못 내면 파산' },
   { id: 'penguin', name: '펭귄 얼음 점프', ready: true, isNew: true, create: createPenguin,
     help: '터치하면 펭귄이 위쪽 얼음으로 폴짝!\n얼음 한가운데 착지하면 퍼펙트\n퍼펙트 4번이면 무지개 질주!\n\n오래 서 있으면 얼음이 녹아요\n생선은 보너스, 물개는 조심!' },
-  { id: 'dodge', name: '별똥별 피하기', ready: false },
+  { id: 'dodge', name: '별똥별 피하기', ready: true, isNew: true, create: createDodge,
+    help: '하늘로 날아오르는 토끼!\n화면 왼쪽·오른쪽을 눌러\n떨어지는 별똥별을 피하세요\n빨간 느낌표가 떨어질 자리예요\n\n떡 5개를 모으면 벌크업!\n근육 토끼가 별똥별을 쳐내요' },
   { id: 'jump', name: '폴짝 점프', ready: false },
   { id: 'rhythm', name: '박자 맞추기', ready: false },
   { id: 'number', name: '숫자 순서', ready: false },
@@ -240,7 +242,9 @@ async function showRank(g, highlightAt) {
   try {
     await sendBest(g); // 이 기기의 최고 기록이 아직 안 올라갔으면 올림
     const list = await loadRanking(g.id, store.get('acct'));
-    if (token === rankToken) drawRankList(g, list, (r) => r.me);
+    if (token !== rankToken) return;
+    drawRankList(g, list, (r) => r.me);
+    if (isTestName(store.get('acct'))) $('rankNote').textContent = '시험용 계정은 순위에 올라가지 않아요';
   } catch {
     if (token !== rankToken) return;
     $('rankNote').textContent = store.get('acct') ? '인터넷 연결이 안 돼 이 기기 기록만 보여요' : '로그인하면 함께 보는 순위에 올라가요';

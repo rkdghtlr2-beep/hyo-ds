@@ -312,8 +312,11 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     sprite(PERSON, pal, x, 128 - bob, 2, "#1b1420");
 
     const cx = x + 14;
+    // 걸어가는 중에는 말풍선을 숨김 (다른 손님 말풍선과 겹치지 않게)
+    const walking = c.leaving ? !(c.fume > 0) : Math.abs(c.x - SLOT_X[c.slot]) > 1;
     // 짜증 내며 나가는 손님: 빨간 말풍선 + 김(화남 표시)
     if (fuming) {
+      if (walking) return;
       const bw = 64, bh = 16;
       const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;
       pbox(bx, by, bw, bh, "#fff0f0", "#c0392b");
@@ -327,6 +330,7 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
     }
     // 붕어빵을 받은 손님: 초록 말풍선으로 고마움 표시 + 하트
     if (c.happyMsg) {
+      if (walking) return;
       const bw = 64, bh = 16;
       const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;
       pbox(bx, by, bw, bh, "#f0fff4", "#2fa37a");
@@ -340,6 +344,7 @@ export function createBungeo(canvas, { onScore, onGameOver }) {
       return;
     }
 
+    if (walking) return;
     // 말풍선
     const bw = 58, bh = c.order.red && c.order.cream ? 26 : 16;
     const bx = clamp(cx - bw / 2, 2, BB_W - bw - 2), by = 118 - bh - 6;

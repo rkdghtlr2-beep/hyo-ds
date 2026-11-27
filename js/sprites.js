@@ -130,12 +130,27 @@ const px = (ctx, color, x, y, w = 1, h = 1) => { ctx.fillStyle = color; ctx.fill
 
 // 게임 목록 아이콘 (16x16)
 export const ICONS = {
+  // 별똥별 피하기: 별똥별 아래로 날아오르는 토끼
   dodge(ctx) {
-    px(ctx, PAL.D, 0, 0, 16, 16);
-    px(ctx, PAL.W, 2, 2); px(ctx, PAL.W, 13, 4); px(ctx, PAL.W, 6, 1);
-    px(ctx, PAL.Y, 1, 5, 2, 1); px(ctx, PAL.O, 3, 6, 2, 1);
-    drawSprite(ctx, 'meteor', 4, 3);
-    drawSprite(ctx, 'hero', 3, 6);
+    px(ctx, '#1a1c2c', 0, 0, 16, 16);
+    px(ctx, PAL.W, 2, 2); px(ctx, PAL.W, 6, 4); px(ctx, PAL.S, 1, 9); px(ctx, PAL.S, 14, 8);
+    // 별똥별
+    px(ctx, PAL.R, 15, 0); px(ctx, PAL.O, 14, 1); px(ctx, PAL.Y, 13, 2);
+    px(ctx, PAL.K, 10, 2, 4, 4); px(ctx, PAL.O, 11, 3, 2, 2); px(ctx, PAL.Y, 11, 3);
+    const r = [
+      '.KK....KK.',
+      '.KPK..KPK.',
+      '.KPK..KPK.',
+      '.KKKKKKKK.',
+      'KWWWWWWWWK',
+      'KWKWWWWKWK',
+      'KPWWPPWWPK',
+      'KWWWWWWWWK',
+      '.KKKKKKKK.',
+    ];
+    r.forEach((row, y) => [...row].forEach((c, x) => c !== '.' && px(ctx, PAL[c], 2 + x, 5 + y)));
+    // 발밑 불꽃
+    px(ctx, PAL.O, 4, 14, 2, 2); px(ctx, PAL.O, 8, 14, 2, 2); px(ctx, PAL.Y, 4, 14, 2, 1); px(ctx, PAL.Y, 8, 14, 2, 1);
   },
   jump(ctx) {
     px(ctx, PAL.B, 0, 0, 16, 16);

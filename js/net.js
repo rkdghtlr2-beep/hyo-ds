@@ -157,8 +157,12 @@ export async function login(name, pin) {
 // ---------- 함께 보는 순위 ----------
 // rankings/{게임}/{이름} = { nick, score, at } — 한 사람당 그 게임 최고 기록 1개만 남김
 
+// 시험용 계정 (이름이 '테스트'로 시작) 은 순위에 올리지도, 보여 주지도 않음
+export const isTestName = (nick) => /^테스트/.test(nick || '');
+
 // 기록 올리기: 더 높은 점수일 때만 바꿈
 export async function submitScore(game, nick, score) {
+  if (isTestName(nick)) return;
   await connect();
   const { db, ref, runTransaction } = fb;
   await runTransaction(ref(db, `rankings/${game}/${nick}`), (cur) => {
@@ -171,9 +175,9 @@ export async function submitScore(game, nick, score) {
 export async function loadRanking(game, myNick) {
   await connect();
   const { db, ref, get, query, orderByChild, limitToLast } = fb;
-  const snap = await get(query(ref(db, `rankings/${game}`), orderByChild('score'), limitToLast(10)));
+  const snap = await get(query(ref(db, `rankings/${game}`), orderByChild('score'), limitToLast(20)));
   const list = [];
-  snap.forEach((c) => { list.push({ ...c.val(), me: c.key === myNick }); });
+  snap.forEach((c) => { if (!isTestName(c.key)) list.push({ ...c.val(), me: c.key === myNick }); });
   list.sort((a, b) => b.score - a.score || a.at - b.at);
-  return list;
+  return list.slice(0, 10);
 }

@@ -107,6 +107,28 @@ SPRITES.seal = [
   '.KSKSSSSSSSK..',
   '..KKKKKKKKK...',
 ];
+// 펭귄을 밀어낸 물개 (눈 감고 혀 내밀며 메롱)
+SPRITES.sealTease = [
+  '..KKKKK.......',
+  '.KSSSSSK......',
+  'KSKSSSKKK.....',
+  'KSSSDSSSK..KK.',
+  'KPSSRSSPKKKSSK',
+  'KSSSRSSSSSSSK.',
+  '.KSKSSSSSSSK..',
+  '..KKKKKKKKK...',
+];
+// 무지개 질주 때 물 밖으로 고개를 내민 물고기 (선글라스)
+SPRITES.fishUp = [
+  '..KKKK..',
+  '.KOOOOK.',
+  'KDDDDDDK',
+  'KDWDDWDK',
+  'KOOOOOOK',
+  'KOOKKOOK',
+  'KOOOOOOK',
+  '.KOOOOK.',
+];
 // 생선
 SPRITES.fishie = [
   '..KKKKK.KK',
@@ -147,7 +169,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
   }
 
   // 한 얼음에 서 있을 수 있는 시간 (올라갈수록 짧아짐)
-  const standLimit = (f) => (f.thin ? 2.1 : Math.max(2.8, 4.6 - f.d * 0.03));
+  const standLimit = (f) => (f.thin ? 2.6 : Math.max(2.8, 4.6 - f.d * 0.03));
 
   function reset() {
     const floes = [];
@@ -196,6 +218,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
     const onFloe = Math.abs(off) <= f.w / 2 - 2;
     // 물개를 밟으면 미끄러져 빠짐
     const onSeal = f.seal !== null && Math.abs(off - f.seal) < 9;
+    if (onSeal) f.sealTease = true; // 물개가 메롱
     if (!onFloe || onSeal) return fall(onSeal ? '물개한테 밀렸어요!' : null, f);
 
     s.cur++;
@@ -307,13 +330,29 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
       s.gauge = Math.max(0, s.fever / FEVER_TIME);
       // 무지개 꼬리
       if (s.state !== 'fall') s.fx.push({ type: 'trail', x: s.px + rand(-4, 4), y: penguinY() - 10, hue: (s.time * 600) % 360, t: 0.35 });
+      // 바다에서 물고기들이 고개를 내밀고 몸을 흔듦
+      s.leapT = (s.leapT || 0) - dt;
+      const fish = s.fx.filter((e) => e.type === 'dance');
+      if (s.leapT <= 0 && fish.length < 14) {
+        s.leapT = rand(0.08, 0.18);
+        // 다른 물고기와 겹치지 않는 자리를 몇 번 찾아봄 (화면 기준으로 고정)
+        for (let i = 0; i < 6; i++) {
+          const x = Math.round(rand(16, W - 16)), y = Math.round(rand(56, H - 16));
+          if (fish.some((f) => Math.abs(f.x - x) < 24 && Math.abs(f.y - y) < 22)) continue;
+          const life = rand(1.4, 2.2);
+          s.fx.push({ type: 'dance', x, y, t: life, life, hue: Math.floor(rand(0, 360)), ph: rand(0, 6), sp: rand(14, 20) });
+          break;
+        }
+      }
       if (s.fever <= 0) { s.fever = 0; s.gauge = 0; s.stand = 0; s.cracked = 0; }
     }
 
     // 다음 얼음은 좌우로 왔다 갔다
     const next = floeAt(s.cur + 1);
     if (next && s.state !== 'fall') {
-      next.x += next.dir * next.speed * dt;
+      // 살얼음 위에 있으면 다음 얼음이 1.5배 빨리 움직임 (빨리 녹는 만큼 빨리 옴)
+      const cur = floeAt(s.cur);
+      next.x += next.dir * next.speed * (cur && cur.thin ? 1.5 : 1) * dt;
       const lo = next.w / 2 + 4, hi = W - next.w / 2 - 4;
       if (next.x < lo) { next.x = lo; next.dir = 1; }
       if (next.x > hi) { next.x = hi; next.dir = -1; }
@@ -411,9 +450,10 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
     if (f.seal !== null) {
       // 물개는 얼음 바깥쪽을 보고 누워 있음
       ctx.save();
-      const sx = x + f.seal;
+      const sx = Math.round(x + f.seal); // 소수점 위치에서 좌우를 뒤집으면 도트가 깨짐
       if (f.seal < 0) { ctx.translate(sx, 0); ctx.scale(-1, 1); ctx.translate(-sx, 0); }
-      drawSprite(ctx, 'seal', sx - 14, y - 15, 2, { S: '#aab8c6', D: '#2b2d3a', P: '#ff9fb8' });
+      const laugh = f.sealTease ? Math.round(Math.abs(Math.sin(s.time * 18)) * 2) : 0; // 낄낄 들썩임
+      drawSprite(ctx, f.sealTease ? 'sealTease' : 'seal', sx - 14, y - 15 - laugh, 2, { S: '#aab8c6', D: '#2b2d3a', P: '#ff9fb8' });
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -461,10 +501,37 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
     ctx.restore();
   }
 
+  // 질주 중 물고기들: 얼음과 펭귄 아래쪽(물속)에 먼저 그림
+  function drawDancers() {
+    for (const e of s.fx) {
+      if (e.type !== 'dance') continue;
+      // 물 위로 쏙 올라와 신나게 흔들고 다시 쏙 들어감 (화면 자리 고정)
+      const k = Math.min(1, (e.life - e.t) / 0.2, e.t / 0.2);
+      const y = e.y;
+      const tt = s.time * e.sp + e.ph;
+      ctx.save();
+      ctx.translate(e.x, y);
+      ctx.beginPath(); ctx.rect(-20, -32, 40, 32); ctx.clip();
+      // 좌우로 들썩이고, 위아래로 통통 튀고, 크게 흔들기
+      ctx.translate(Math.round(Math.sin(tt) * 3), Math.round((1 - k) * 18 - Math.abs(Math.sin(tt * 1.5)) * 5));
+      ctx.rotate(Math.sin(tt * 2) * 0.6);
+      // 한 마리씩 펭귄처럼 무지개빛
+      const hue = (e.hue + s.time * 500) % 360;
+      drawSpriteScaled(ctx, 'fishUp', -8, -15, 16, 16, { K: `hsl(${hue},85%,45%)`, O: `hsl(${(hue + 60) % 360},90%,65%)`, D: '#0d0e18' });
+      ctx.restore();
+      // 물결
+      ctx.fillStyle = '#bfe6ff';
+      ctx.fillRect(e.x - 9, y, 5, 1); ctx.fillRect(e.x + 5, y, 5, 1);
+      ctx.fillRect(e.x - 6, y + 2, 12, 1);
+    }
+  }
+
   function drawFx() {
     ctx.textAlign = 'center';
     for (const e of s.fx) {
-      if (e.type === 'trail') {
+      if (e.type === 'dance') {
+        // 물고기는 drawDancers 에서 얼음보다 먼저 그림
+      } else if (e.type === 'trail') {
         ctx.globalAlpha = e.t / 0.35;
         ctx.fillStyle = `hsl(${e.hue},90%,65%)`;
         ctx.fillRect(Math.round(e.x) - 2, Math.round(e.y), 4, 4);
@@ -509,8 +576,8 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
     }
     if (s.fever > 0) {
       ctx.font = '12px Galmuri11, monospace';
-      ctx.fillStyle = PAL.K; ctx.fillText('마구 터치!', W / 2 + 1, 44);
-      ctx.fillStyle = `hsl(${(s.time * 500) % 360},90%,70%)`; ctx.fillText('마구 터치!', W / 2, 43);
+      ctx.fillStyle = PAL.K; ctx.fillText('마구 뛰어!', W / 2 + 1, 44);
+      ctx.fillStyle = `hsl(${(s.time * 500) % 360},90%,70%)`; ctx.fillText('마구 뛰어!', W / 2, 43);
     } else if (s.perfect >= 2) {
       ctx.fillStyle = PAL.Y; ctx.fillText(`퍼펙트 ${s.perfect}연속`, W / 2, 42);
     }
@@ -533,6 +600,7 @@ export function createPenguin(canvas, { onScore, onGameOver }) {
     if (s.shake > 0) ctx.translate(Math.round(rand(-3, 3)), Math.round(rand(-3, 3)));
     drawSea();
     // 먼 얼음부터 (위쪽부터) 그림
+    drawDancers();
     [...s.floes].sort((a, b) => b.n - a.n).forEach(drawFloe);
     drawPenguin();
     drawFx();
